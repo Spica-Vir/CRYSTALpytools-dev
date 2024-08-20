@@ -523,6 +523,8 @@ class ChargeDensity():
         Args:
             \*files (str): Path to the charge density / spin density file(s).
                 All the entries must be in the same file format.
+            output (str): Screen output file.
+            method (str): See above.
         Returns:
             cls (ChargeDensity)
         """
@@ -840,6 +842,42 @@ class ChargeDensity():
         self._set_unit(uold)
         return fig
 
+    def to_xsf(self, filename):
+        """
+        Write data into the `XCrySDen <http://www.xcrysden.org/>`_ XSF file
+        format. The code writes into either 2D or 3D data grids depending on the
+        ``dimension`` attribute. For spin-polarized cases, 2 maps will be
+        written with the title 'alpha+beta' and 'alpha-beta' and into 2 data
+        blocks. Objects updated by the ``alpha_beta()`` method will get grids
+        with the same titles, which needs extra attention.
+
+        .. note::
+
+            Geometry information is mandatory. 2D / 3D data grid only.
+
+        Args:
+            filename (str): The output xsf filename.
+        """
+        from CRYSTALpytools.base.extfmt import XSFParser
+        import numpy as np
+
+        if np.all(self.structure==None): raise Exception('Geometry info unavailable.')
+        if self.dimension != 2 and self.dimension != 3: raise Exception('Limited to 2D and 3D charge / spin densities.')
+
+        if self.dimension == 2:
+            XSFParser.write_2D(self.base, self.structure, self.data[:, :, 0],
+                               filename, gridname='alpha+beta')
+            if self.spin == 2:
+                XSFParser.write_2D(self.base, self.structure, self.data[:, :, 1],
+                                   filename, gridname='alpha-beta', append=True)
+        else:
+            XSFParser.write_3D(self.base, self.structure, self.data[:, :, :, 0],
+                               filename, gridname='alpha+beta')
+            if self.spin == 2:
+                XSFParser.write_3D(self.base, self.structure, self.data[:, :, :, 1],
+                                   filename, gridname='alpha-beta')
+        return
+
     def _set_unit(self, unit):
         """
         Set units of data of ``ChargeDensity`` object.
@@ -862,7 +900,7 @@ class ChargeDensity():
         else:
             raise ValueError('Unknown unit.')
 
-        lprops = ['base'] # length units
+        lprops = [] # length units
         dprops = ['data'] # density units
         for l in lprops:
             newattr = getattr(self, l) * cst

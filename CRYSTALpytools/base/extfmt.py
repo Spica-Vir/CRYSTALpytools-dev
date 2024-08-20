@@ -747,3 +747,229 @@ class BOLTZTRAParaser():
         data = np.transpose(data, axes=[1,2,0])
         return spin, 'TDF', data[:, 0, :], data[:, 1:, :], '1/hbar^2*eV*fs/angstrom'
 
+
+class CUBEParser():
+    """
+    A collection of functions to parse **CRYSTAL** CUBE files. Instantiation of
+    this object is not recommaneded.
+
+    .. note::
+
+        Developed especially for CUBE formatted output of CRYSTAL. Lattice
+        parameters must be included in the comment line in Bohr and degree.
+
+    """
+    @classmethod
+    def read_cube(cls, filename):
+        """
+        Read CUBE formatted files. For base vectors, they are defined by 4 points,
+        `origin`, `a`, `b` and `c`.
+
+        Args:
+            filename (str):
+
+        Returns:
+            origin (array): 1\*3 Cartesian coordinates of origin. Unit: :math:`\\AA`.
+            a (array): 1\*3 Cartesian coordinates of grid x base vector end. Unit: :math:`\\AA`.
+            b (array): 1\*3 Cartesian coordinates of grid y base vector end. Unit: :math:`\\AA`.
+            c (array): 1\*3 Cartesian coordinates of grid z base vector end. Unit: :math:`\\AA`.
+            struc (CStructure): Extended Pymatgen Structure object.
+            grid (array): nZ\*nY\*nX array of 3D data grid.
+            unit (str): Data grid unit, 'a.u.'
+        """
+        import pandas as pd
+        import numpy as np
+        from CRYSTALpytools.geometry import CStructure
+        from CRYSTALpytools.units import au_to_angstrom
+        from pymatgen.core.lattice import Lattice
+        from scipy.spatial.transform import Rotation as Rot
+
+        df = pd.DataFrame(open(filename))
+        latt = np.array(df[0][1].strip().split(), dtype=float)
+        latt[0:3] = au_to_angstrom(latt[0:3])
+
+        # get geom
+        ## lattice
+        gridv = np.array(df[0].loc[2:5].map(lambda x: x.strip().split()).tolist(),
+                         dtype=float)
+        natom = int(gridv[0, 0])
+        origin = au_to_angstrom(gridv[0, 1:])
+        a = au_to_angstrom(gridv[1, 1:] * (gridv[1, 0]-1)) + origin
+        b = au_to_angstrom(gridv[2, 1:] * (gridv[2, 0]-1)) + origin
+        c = au_to_angstrom(gridv[3, 1:] * (gridv[3, 0]-1)) + origin
+        atoms = df[0].loc[6:5+natom].map(lambda x: x.strip().split()).tolist()
+        species = np.array([i[0] for i in atoms], dtype=int)
+        site_properties = {'charges' : species - np.array([i[1] for i in atoms], dtype=float)}
+        coords = np.array([i[2:] for i in atoms], dtype=float)
+
+        ## align lattice vector a with grid base vector a
+        lattice = Lattice.from_parameters(a=latt[0], b=latt[1], c=latt[2],
+                                          alpha=latt[3], beta=latt[4], gamma=latt[5])
+        lattmx = lattice.matrix
+        vec1 = lattmx[0] / np.linalg.norm(lattmx[0])
+        vec2 = (a-origin) / np.linalg.norm(a-origin)
+        rotvec = np.cross(vec1, vec2)
+        if np.all(np.abs(rotvec) < 1e-4): rotvec = np.zeros([3,])
+        else: rotvec = rotvec / np.linalg.norm(rotvec) * np.arccos(np.dot(vec1, vec2))
+        rot = Rot.from_rotvec(rotvec)
+        lattice = Lattice(rot.apply(lattmx))
+        struc = CStructure(lattice, species, au_to_angstrom(coords), pbc=(True, True, True),
+                           site_properties=site_properties, coords_are_cartesian=True)
+        # read data
+        na = int(gridv[1, 0]); nb = int(gridv[2, 0]); nc = int(gridv[3, 0])
+        grid = []
+        df[0].loc[6+natom:].map(lambda x: grid.extend(x.strip().split()))
+        grid = np.array(grid, dtype=float).reshape([nc, nb, na], order='F')
+        return origin, a, b, c, struc, grid, 'a.u.'
+
+
+class XSFParser():
+    """
+    A collection of functions to parse XCrySDen XSF files. Instantiation of
+    this object is not recommaneded.
+    """
+    @classmethod
+    def write_geom(cls, struc, filename):
+        """
+        Write XSF file for geometry.
+
+        Args:
+            struc (CStructure): Extended Pymatgen Structure object.
+            filename (str): Output name.
+        Returns:
+            header (str)
+        """
+        import numpy as np
+        import os, warnings
+
+        if os.path.exists(filename):
+            warnings.warn("File '{}' exists! It will be updated.".format(filename),
+                            stacklevel=3)
+        file = open(filename, 'w')
+
+        header = ''
+        dimen_key = {3 : 'CRYSTAL', 2 : 'SLAB', 1 : 'POLYMER', 0 : 'MOLECULE'}
+
+        # write geometry
+        header += ' %s\n' % dimen_key[struc.lattice.pbc.count(True)]
+        header += ' %s\n' % 'PRIMVEC'
+        lattmx = struc.lattice.matrix
+        for i in range(3):
+            header += ' %15.9f%15.9f%15.9f\n' % (lattmx[i,0], lattmx[i,1], lattmx[i,2])
+        header += ' %s\n' % 'PRIMCOORD'
+        header += ' %10i%10i\n' % (struc.num_sites, 1)
+        for i in range(struc.num_sites):
+            header += ' %-4s%15.9f%15.9f%15.9f\n' % \
+                      (struc.species_symbol[i], struc.cart_coords[i,0],
+                       struc.cart_coords[i,1], struc.cart_coords[i,2])
+
+        file.write("%s\n" % header)
+        file.close()
+        return
+
+    @classmethod
+    def write_3D(cls, base, struc, grid, filename, gridname=None, append=False):
+        """
+        Write XSF file for 3D scalar fields.
+
+        Args:
+            base (array): 4\*3 array of Cartesian coordinates of points O, A, B,
+                C to define a 3D grid. Vectors OA, OB and OC are used. Unit: :math:`\\AA`.
+            struc (CStructure): Extended Pymatgen Structure object.
+            grid (array): nA\*nB\*nC array of 3D data grid.
+            filename (str): Output name.
+            gridname (str): Name of the 3D grid.
+            append (bool): Append grid data into an existing XSF file. Geometry
+                info is not written. Grid data is written into a new
+                'BLOCK_DATAGRID_3D' block.
+        """
+        import numpy as np
+
+        # write geometry
+        if append == False: cls.write_geom(struc, filename)
+
+        file = open(filename, 'r+')
+        header = file.read()
+        file.close()
+
+        # write 3D data
+        header += ' %s\n' % 'BEGIN_BLOCK_DATAGRID_3D'
+        if np.all(gridname==None): gridname = 'UNKNOWN'
+        header += '   %s\n' % gridname
+        header += '   %s_%s\n' % ('BEGIN_DATAGRID_3D', gridname)
+        header += '   %8i%8i%8i\n' % (grid.shape[2], grid.shape[1], grid.shape[0])
+        header += '   %15.9f%15.9f%15.9f\n' % (base[0,0], base[0,1], base[0,2])
+        va = base[1] - base[0]
+        header += '   %15.9f%15.9f%15.9f\n' % (va[0], va[1], va[2])
+        vb = base[2] - base[0]
+        header += '   %15.9f%15.9f%15.9f\n' % (vb[0], vb[1], vb[2])
+        vc = base[3] - base[0]
+        header += '   %15.9f%15.9f%15.9f\n' % (vc[0], vc[1], vc[2])
+        ## write grid
+        grid = grid.flatten(order='C') # [[nX] nY] nZ
+        ## footer
+        footer = ''
+        left = grid.shape[0] % 5
+        if left > 0:
+            for i in range(grid.shape[0]-left, grid.shape[0]):
+                footer += '%15.6e' % grid[i]
+            footer += '\n'
+        footer += '   %s_%s\n' % ('END_DATAGRID_3D', gridname)
+        footer += ' %s\n' % 'END_BLOCK_DATAGRID_3D'
+        grid = grid[:grid.shape[0]-left].reshape([-1, 5], order='C')
+        np.savetxt(file, grid, fmt='%15.6e', header=header, footer=footer, comments='')
+        return
+
+
+    @classmethod
+    def write_2D(cls, base, struc, grid, filename, gridname=None, append=False):
+        """
+        Write XSF file for 2D scalar fields.
+
+        Args:
+            base (list[array]): 1\*nGrid list of 3\*3 array of Cartesian
+                coordinates of points A, B, C to define a 2D grid. Vectors BA
+                and BC are used. Unit: :math:`\\AA`.
+            struc (CStructure): Extended Pymatgen Structure object.
+            grid (list[array]): 1\*nGrid list of 2D data grids.
+            filename (str): Output name.
+            gridname (list[str]): 1\*nGrid list 2D grid names.
+            append (bool): Append grid data into an existing XSF file. Geometry
+                info is not written. Grid data is written into a new
+                'BLOCK_DATAGRID_2D' block.
+        """
+        import numpy as np
+
+        # write geometry
+        if append == False: cls.write_geom(struc, filename)
+
+        file = open(filename, 'r+')
+        header = file.read()
+        file.close()
+
+        # write 2D data
+        header += ' %s\n' % 'BEGIN_BLOCK_DATAGRID_2D'
+        if np.all(gridname==None): gridname = 'UNKNOWN'
+        header += '   %s\n' % gridname
+        header += '   %s_%s\n' % ('BEGIN_DATAGRID_2D', gridname)
+        header += '   %8i%8i\n' % (grid.shape[0], grid.shape[1])
+        header += '   %15.9f%15.9f%15.9f\n' % (base[1,0], base[1,1], base[1,2])
+        va = base[2] - base[1] # x: BC
+        header += '   %15.9f%15.9f%15.9f\n' % (va[0], va[1], va[2])
+        vb = base[0] - base[1] # y: AB
+        header += '   %15.9f%15.9f%15.9f' % (vb[0], vb[1], vb[2])
+        ## write grid
+        grid = grid.flatten(order='C') # [nX] nY
+        ## footer
+        footer = ''
+        left = grid.shape[0] % 5
+        if left > 0:
+            last_line = ''
+            for i in range(grid.shape[0]-left, grid.shape[0]):
+                footer += '%15.6e' % grid[i]
+            footer += '\n'
+        footer += '   %s_%s\n' % ('END_DATAGRID_2D', gridname)
+        footer += ' %s\n' % 'END_BLOCK_DATAGRID_2D'
+        grid = grid[:grid.shape[0]-left].reshape([-1, 5], order='C')
+        np.savetxt(filename, grid, fmt='%15.6e', header=header, footer=footer, comments='')
+        return
