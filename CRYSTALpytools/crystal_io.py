@@ -2957,12 +2957,28 @@ class Properties_output(POutBASE):
             raise ValueError("Unknown method: '{}'.".format(method))
         if len(cubefiles) > 2 and method != 'substract':
             raise ValueError("Only 1 or 2 entries are permitted for method: '{}'.".format(method))
-        if method == 'substract' and len(cubefiles) < 2:
-            warings.warn("At least 2 files are needed for the 'substract' method. Using 'normal' now.",
+        if (method=='substract' or method=='alpha_beta') and len(cubefiles) < 2:
+            warings.warn("At least 2 files are needed for the specified method. Using 'normal' now.",
                          stacklevel=2)
         # The first entry
         origin, a, b, c, struc, data, _ = CUBEParser.read_cube(cubefiles[0])
-        # others
+        # Structure from output if provided, to keep periodicity settings.
+        ## compare structures of CUBE and output
+        def compare_struc(struc0, struc1):
+            if np.linalg.norm(struc0.lattice.matrix - struc1.lattice.matrix) > 1e-4:
+                return False
+            if struc0.num_sites != struc1.num_sites:
+                return False
+            if np.linalg.norm(struc0.frac_coords-struc1.frac_coords)>1e-2:
+                return False
+            return True
+        if hasattr(self, 'file_name'):
+            struc1 = super().get_geometry()
+            if compare_struc(struc, struc1) == False:
+                raise Exception('Inconsistent geometries are given in output and CUBE files. Check your input files.')
+            struc = struc1
+
+        # Other entries
         if len(cubefiles) > 1:
             for f in cubefiles[1:]:
                 o1, a1, b1, c1, struc1, data1, _ = CUBEParser.read_cube(f)
@@ -2970,13 +2986,15 @@ class Properties_output(POutBASE):
                 or np.linalg.norm(b-b1)>1e-4 or np.linalg.norm(c-c1)>1e-4 \
                 or np.linalg.norm(np.array(data1.shape)-np.array(data.shape))>1e-4:
                     raise Exception("Inconsistent data grid between the initial and the file: '{}'.".format(f))
-                if np.linalg.norm(struc.cart_coords-struc1.cart_coords)>1e-4:
-                    raise Exception("Inconsistent structure between the initial and the file: '{}'.".format(f))
                 if method == 'substract':
                     data -= data1
+                else:
+                    if compare_struc(struc, struc1) == False:
+                        raise Exception("Inconsistent structure between the initial and the file: '{}'.".format(f))
 
         if method == 'substract':
-            self.ech3 = ChargeDensity(data, [origin, a, b, c], 1, 3, struc=struc, unit='a.u.')
+            self.ech3 = ChargeDensity(np.expand_dims(data, axis=3),
+                                      [origin, a, b, c], 1, 3, struc=struc, unit='a.u.')
             del data, data1
         else:
             spin = len(cubefiles)
@@ -2984,10 +3002,13 @@ class Properties_output(POutBASE):
             datanew[:, :, :, 0] = data; del data
             if spin > 1:
                 datanew[:, :, :, 1] = data1; del data1
-            self.ech3 = ChargeDensity(datanew, [origin, a, b, c], spin, 3, struc=struc, unit='a.u.')
+            self.ech3 = ChargeDensity(datanew, [origin, a, b, c], spin, 3,
+                                      struc=struc, unit='a.u.')
             del datanew
-            if method == 'alpha_beta':
-                self.ech3.alpha_beta()
+
+        if method == 'alpha_beta':
+            self.ech3.alpha_beta()
+        self.ech3._set_unit('Angstrom')
         return self.ech3
 
 #-----------------------------2D vector field----------------------------------#

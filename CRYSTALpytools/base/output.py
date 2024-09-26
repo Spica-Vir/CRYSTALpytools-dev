@@ -619,7 +619,7 @@ class POutBASE():
                 countline += 1
                 line = data[countline].strip().split()
                 [a, b, c, al, be, ga, vol] = [float(i) for i in line]
-                s = a * b * np.sin(ga)
+                s = a * b * np.sin(ga/180*np.pi)
                 l = a
                 if np.abs(vol-l) < 1e-4:
                     ndimen = 1

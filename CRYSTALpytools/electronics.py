@@ -849,19 +849,33 @@ class ChargeDensity():
 
     def to_xsf(self, filename):
         """
+        **2D / 3D data only**
+
         Write data into the `XCrySDen <http://www.xcrysden.org/>`_ XSF file
         format. The code writes into either 2D or 3D data grids depending on the
         ``dimension`` attribute. For spin-polarized cases, 2 maps will be
         written with the title 'alpha+beta' and 'alpha-beta' and into 2 data
         blocks. Objects updated by the ``alpha_beta()`` method will get grids
-        with the same titles, which needs extra attention.
+        with the **same** titles, which needs extra attention.
 
         .. note::
 
-            Geometry information is mandatory. 2D / 3D data grid only.
+            Geometry information is mandatory.
+
+        .. note::
+
+            For 3D data grid, if CUBE file(s) are read without output, the XSF
+            file output has the 3D 'CRYSTAL' periodicity. As far as the authors
+            have been aware of, this only causes Segmentation Fault of XCrySDen
+            1.6.2 when dealing with low dimensional systems. Available solution
+            includes 1. including output file 2. using other software such
+            as `VESTA <https://jp-minerals.org/vesta/en/>`_ 3. Changing the
+            keyword manually.
 
         Args:
             filename (str): The output xsf filename.
+        Returns:
+            None
         """
         from CRYSTALpytools.base.extfmt import XSFParser
         import numpy as np
