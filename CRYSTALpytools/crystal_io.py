@@ -2919,6 +2919,77 @@ class Properties_output(POutBASE):
 
         return self.echg
 
+    def read_ECH3(self, *cubefiles, method='normal'):
+        """
+        Read 3D charge / spin density data from CUBE files. Unit: :math:`e.\\AA^{-3}`.
+
+        .. note::
+
+            Only compatible with CRYSTAL cube outputs. Lattice constants are
+            annotated in the comment line.
+
+        Available methods are:
+
+        * 'normal': Normal reading, 1 or 2 entries for charge and spin
+            densities.  
+        * 'substact': Substracting data from the first entry based on following
+            entries.  
+        * 'alpha_beta': Save spin-polarized data in :math:`\\alpha` /
+            :math:`\\beta` states, rather than charge(:math:`\\alpha+\\beta`)
+            / spin(:math:`\\alpha-\\beta`). 1 or 2 entries for charge and spin
+            densities.
+
+        Args:
+            \*cubefiles (str): Path to the CUBE file(s).
+            method (str): Data processing method. See above.
+
+        Returns:
+            self.ech3 (ChargeDensity): ``electronics.ChargeDensity`` object.
+        """
+        from CRYSTALpytools.base.extfmt import CUBEParser
+        from CRYSTALpytools.electronics import ChargeDensity
+        import numpy as np
+        import pandas as pd
+        import warnings
+
+        method = method.lower()
+        if method != 'substract' and method != 'alpha_beta' and method != 'normal':
+            raise ValueError("Unknown method: '{}'.".format(method))
+        if len(cubefiles) > 2 and method != 'substract':
+            raise ValueError("Only 1 or 2 entries are permitted for method: '{}'.".format(method))
+        if method == 'substract' and len(cubefiles) < 2:
+            warings.warn("At least 2 files are needed for the 'substract' method. Using 'normal' now.",
+                         stacklevel=2)
+        # The first entry
+        origin, a, b, c, struc, data, _ = CUBEParser.read_cube(cubefiles[0])
+        # others
+        if len(cubefiles) > 1:
+            for f in cubefiles[1:]:
+                o1, a1, b1, c1, struc1, data1, _ = CUBEParser.read_cube(f)
+                if np.linalg.norm(origin-o1)>1e-4 or np.linalg.norm(a-a1)>1e-4 \
+                or np.linalg.norm(b-b1)>1e-4 or np.linalg.norm(c-c1)>1e-4 \
+                or np.linalg.norm(np.array(data1.shape)-np.array(data.shape))>1e-4:
+                    raise Exception("Inconsistent data grid between the initial and the file: '{}'.".format(f))
+                if np.linalg.norm(struc.cart_coords-struc1.cart_coords)>1e-4:
+                    raise Exception("Inconsistent structure between the initial and the file: '{}'.".format(f))
+                if method == 'substract':
+                    data -= data1
+
+        if method == 'substract':
+            self.ech3 = ChargeDensity(data, [origin, a, b, c], 1, 3, struc=struc, unit='a.u.')
+            del data, data1
+        else:
+            spin = len(cubefiles)
+            datanew = np.zeros([data.shape[0], data.shape[1], data.shape[2], spin])
+            datanew[:, :, :, 0] = data; del data
+            if spin > 1:
+                datanew[:, :, :, 1] = data1; del data1
+            self.ech3 = ChargeDensity(datanew, [origin, a, b, c], spin, 3, struc=struc, unit='a.u.')
+            del datanew
+            if method == 'alpha_beta':
+                self.ech3.alpha_beta()
+        return self.ech3
+
 #-----------------------------2D vector field----------------------------------#
 
     def read_relativistics(self, f25_file, type, index=None):

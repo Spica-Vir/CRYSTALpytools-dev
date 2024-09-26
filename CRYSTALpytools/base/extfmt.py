@@ -876,7 +876,7 @@ class XSFParser():
             base (array): 4\*3 array of Cartesian coordinates of points O, A, B,
                 C to define a 3D grid. Vectors OA, OB and OC are used. Unit: :math:`\\AA`.
             struc (CStructure): Extended Pymatgen Structure object.
-            grid (array): nA\*nB\*nC array of 3D data grid.
+            grid (array): nZ\*nY\*nX array of 3D data grid.
             filename (str): Output name.
             gridname (str): Name of the 3D grid.
             append (bool): Append grid data into an existing XSF file. Geometry
@@ -904,7 +904,7 @@ class XSFParser():
         vb = base[2] - base[0]
         header += '   %15.9f%15.9f%15.9f\n' % (vb[0], vb[1], vb[2])
         vc = base[3] - base[0]
-        header += '   %15.9f%15.9f%15.9f\n' % (vc[0], vc[1], vc[2])
+        header += '   %15.9f%15.9f%15.9f' % (vc[0], vc[1], vc[2])
         ## write grid
         grid = grid.flatten(order='C') # [[nX] nY] nZ
         ## footer
@@ -917,7 +917,7 @@ class XSFParser():
         footer += '   %s_%s\n' % ('END_DATAGRID_3D', gridname)
         footer += ' %s\n' % 'END_BLOCK_DATAGRID_3D'
         grid = grid[:grid.shape[0]-left].reshape([-1, 5], order='C')
-        np.savetxt(file, grid, fmt='%15.6e', header=header, footer=footer, comments='')
+        np.savetxt(filename, grid, fmt='%15.6e', header=header, footer=footer, comments='')
         return
 
 

@@ -475,13 +475,13 @@ class ElectronBandDOS():
 
 class ChargeDensity():
     """
-    Charge (spin) density object. Unit: :math:`e.\\AA^{-3}`. 3D plot under
-    developing.
+    Charge (spin) density object. Unit: :math:`e.\\AA^{-3}`.
 
     Args:
-        data (array): Plot data. nY\*nX\*nSpin (2D).
-        base (array): 3\*3 Cartesian coordinates of the 3 points defining
-            vectors BA and BC (2D) or 3 base vectors (3D)
+        data (array): Plot data. nY\*nX\*nSpin (2D) or nZ\*nY\*nX\*nSpin (2D)
+        base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
+            base vectors BA, BC (2D) or OA, OB, OC (3D). The sequence is (O),
+            A, B, C.
         spin (int): 1 or 2.
         dimen (int): Dimensionality of the plot.
         struc (CStructure): Extended Pymatgen Structure object.
@@ -504,21 +504,24 @@ class ChargeDensity():
         """
         Generate a ``ChargeDensity`` object from a single file, or from multiple
         files by substracting values from the first entry. Can be used for
-        multiple dimensions (2D only now. 3D under development.)
+        multiple dimensions (2D and 3D).
 
         .. note::
 
             The standard screen output is required to identify the indices of
             corresponding 2D data maps. Otherwise the code only reads the
-            first 2D data map.
+            first 1 (2) 2D data maps for spin = 1 (2).
 
         Available methods are:
 
+        * 'normal': Normal. For 2D fort.25 files, 1 entry. For 3D cube files,
+            2 entries for charge and spin if needed.
         * 'substact': Substracting data from the first entry based on following
             entries. Multiple entries only.  
         * 'alpha_beta': Save spin-polarized data in :math:`\\alpha` /
             :math:`\\beta` states, rather than charge(:math:`\\alpha+\\beta`)
-            / spin(:math:`\\alpha-\\beta`). Single entry only.
+            / spin(:math:`\\alpha-\\beta`). For 2D fort.25 files, 1 entry. For
+            3D cube files, 2 entries for charge and spin if needed.
 
         Args:
             \*files (str): Path to the charge density / spin density file(s).
@@ -535,6 +538,8 @@ class ChargeDensity():
         file.close()
         if '-%-' in header: # 2D plot in fort.25
             cls = Properties_output(output).read_ECHG(*files, method=method)
+        else: # no identifier for CUBE files
+            cls = Properties_output(output).read_ECH3(*files, method=method)
         return cls
 
     def substract(self, *args):
@@ -875,7 +880,7 @@ class ChargeDensity():
                                filename, gridname='alpha+beta')
             if self.spin == 2:
                 XSFParser.write_3D(self.base, self.structure, self.data[:, :, :, 1],
-                                   filename, gridname='alpha-beta')
+                                   filename, gridname='alpha-beta', append=True)
         return
 
     def _set_unit(self, unit):
