@@ -851,13 +851,17 @@ class XSFParser():
         dimen_key = {3 : 'CRYSTAL', 2 : 'SLAB', 1 : 'POLYMER', 0 : 'MOLECULE'}
 
         # write geometry
-        header += ' %s\n' % dimen_key[struc.lattice.pbc.count(True)]
-        header += ' %s\n' % 'PRIMVEC'
-        lattmx = struc.lattice.matrix
-        for i in range(3):
-            header += ' %15.9f%15.9f%15.9f\n' % (lattmx[i,0], lattmx[i,1], lattmx[i,2])
-        header += ' %s\n' % 'PRIMCOORD'
-        header += ' %10i%10i\n' % (struc.num_sites, 1)
+        ndimen = struc.lattice.pbc.count(True)
+        if ndimen > 0:
+            header += ' %s\n' % dimen_key[ndimen]
+            header += ' %s\n' % 'PRIMVEC'
+            lattmx = struc.lattice.matrix
+            for i in range(3):
+                header += ' %15.9f%15.9f%15.9f\n' % (lattmx[i,0], lattmx[i,1], lattmx[i,2])
+            header += ' %s\n' % 'PRIMCOORD'
+            header += ' %10i%10i\n' % (struc.num_sites, 1)
+        else:
+            header += ' %s\n' % 'ATOMS'
         for i in range(struc.num_sites):
             header += ' %-4s%15.9f%15.9f%15.9f\n' % \
                       (struc.species_symbol[i], struc.cart_coords[i,0],

@@ -849,6 +849,8 @@ class ChargeDensity():
 
     def to_xsf(self, filename):
         """
+        .. _ref-ChgDensToXSF:
+
         **2D / 3D data only**
 
         Write data into the `XCrySDen <http://www.xcrysden.org/>`_ XSF file
