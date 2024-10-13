@@ -2271,6 +2271,11 @@ class Phonopy():
         ``q_id`` takes priority and ``q_coord`` is ignored. If both are none,
         all the points will be read.
 
+        .. note::
+
+            Setting ``q_id`` or ``q_coord`` change their weights, i.e., the sum
+            of their weights is renormalized to 1.
+
         Returns:
             qpoint (list): natom\*2 list. 1st element: 3\*1 array. Fractional
                 coordinates of q points; 2nd element: float. Weight
@@ -2297,40 +2302,31 @@ class Phonopy():
             nqpoint = len(qinfo)
 
         natom = int(len(data['phonon'][0]['band']) / 3)
-        qweight = np.zeros([nqpoint,])
-        for idx_p, phonon in enumerate(data['phonon']):
-            try:
-                qweight[idx_p] = int(phonon['weight'])
-            except KeyError:
-                qweight[idx_p] = 1
-        totq = np.sum(qweight)
-
-        qpoint = [[np.zeros([3, 1]), qweight[i]/totq] for i in range(nqpoint)]
+        qpoint = [[np.zeros([3, 1]), 0] for i in range(nqpoint)]
         frequency = np.zeros([nqpoint, 3 * natom])
         # Read phonon
         real_q = 0
         for idx_p, phonon in enumerate(data['phonon']):
-            if real_q == nqpoint:
-                break
-
+            if real_q == nqpoint: break
             if len(qinfo.shape) == 1: # q_id and all q points
-                if idx_p == qinfo[real_q]:
-                    qpoint[real_q][0] = np.array(phonon['q-position'])
-                    frequency[real_q, :] = np.array([i['frequency'] for i in phonon['band']])
-                    real_q += 1
-                else:
+                if idx_p != qinfo[real_q]:
                     continue
             else: # q_coord
-                coord = np.array(phonon['q-position'])
-                if np.linalg.norm(qinfo[real_q] - coord) < 1e-4:
-                    qpoint[real_q][0] = coord
-                    frequency[real_q, :] = np.array([i['frequency'] for i in phonon['band']])
-                    real_q += 1
-                else:
+                if np.linalg.norm(qinfo[real_q]-phonon['q-position']) > 1e-4:
                     continue
+            qpoint[real_q][0] = np.array(phonon['q-position'])
+            try:
+                qpoint[real_q][1] = phonon['weight']
+            except KeyError:
+                qpoint[real_q][1] = 1
+            frequency[real_q, :] = np.array([i['frequency'] for i in phonon['band']])
+            real_q += 1
 
         if real_q < nqpoint:
             raise Exception('Some q points are missing from the yaml file.')
+        # Normalize the weight
+        tweight = np.sum([q[1] for q in qpoint])
+        qpoint = [[q[0], q[1]/tweight] for q in qpoint]
         return qpoint, frequency
 
     @classmethod
