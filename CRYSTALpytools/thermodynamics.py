@@ -2201,7 +2201,7 @@ class Phonopy():
     def read_structure(cls, file):
         """
         Read geometry from `Phonopy <https://phonopy.github.io/phonopy/>`_
-        band.yaml or phonopy.yaml or phonopy_disp.yaml files.
+        band.yaml, phonopy.yaml or phonopy_disp.yaml files.
 
         Args:
             file (str): Phonopy yaml file
@@ -2214,7 +2214,7 @@ class Phonopy():
         import yaml
         import numpy as np
         from CRYSTALpytools.units import au_to_angstrom
-        from pymatgen.core.structure import Structure
+        from CRYSTALpytools.geometry import CStructure
 
         struc_file = open(file, 'r')
         data = yaml.safe_load(struc_file)
@@ -2224,7 +2224,10 @@ class Phonopy():
         try: # band.yaml
             len_unit = data['length_unit']
         except KeyError: # phonopy.yaml
-            len_unit = data['physical_unit']['length']
+            try:
+                len_unit = data['physical_unit']['length']
+            except KeyError:
+                raise Exception("Unknown file format. Only 'band.yaml', 'phonopy.yaml' or 'phonopy_disp.yaml' are allowed.")
 
         if len_unit == 'angstrom':
             unit_len = 1.0
@@ -2247,16 +2250,15 @@ class Phonopy():
                 spec.append(atom['symbol'])
                 coord.append(atom['coordinates'])
 
-        struc = Structure(lattice=latt, species=spec, coords=coord)
-
+        struc = CStructure(latt, spec, coord)
         return struc
 
     @classmethod
     def read_frequency(cls, file, q_id=None, q_coord=None):
         """
         Read phonon frequency from `Phonopy <https://phonopy.github.io/phonopy/>`_
-        band.yaml or qpoints.yaml files. Frequency units must be THz (default
-        of Phonopy).
+        band.yaml, mesh.yaml or qpoints.yaml files. Frequency units must be THz
+        (default of Phonopy).
 
         Args:
             file (str): Phonopy yaml file
@@ -2295,8 +2297,15 @@ class Phonopy():
             nqpoint = len(qinfo)
 
         natom = int(len(data['phonon'][0]['band']) / 3)
+        qweight = np.zeros([nqpoint,])
+        for idx_p, phonon in enumerate(data['phonon']):
+            try:
+                qweight[idx_p] = int(phonon['weight'])
+            except KeyError:
+                qweight[idx_p] = 1
+        totq = np.sum(qweight)
 
-        qpoint = [[np.zeros([3, 1]), 1 / nqpoint] for i in range(nqpoint)]
+        qpoint = [[np.zeros([3, 1]), qweight[i]/totq] for i in range(nqpoint)]
         frequency = np.zeros([nqpoint, 3 * natom])
         # Read phonon
         real_q = 0
@@ -2322,7 +2331,6 @@ class Phonopy():
 
         if real_q < nqpoint:
             raise Exception('Some q points are missing from the yaml file.')
-
         return qpoint, frequency
 
     @classmethod
