@@ -319,11 +319,8 @@ class Harmonic():
     def __init__(self, temperature=[], pressure=[], filename=None, autocalc=True):
         import numpy as np
 
-        T = np.array(temperature, dtype=float, ndmin=1)
-        p = np.array(pressure, dtype=float, ndmin=1)
-        if len(temperature) > 0: self.temperature = T
-        if len(pressure) > 0: self.pressure = p
-
+        self.temperature = np.array(temperature, dtype=float, ndmin=1)
+        self.pressure = np.array(pressure, dtype=float, ndmin=1)
         self.autocalc = autocalc
         self.filename = filename
 
@@ -613,7 +610,7 @@ class Harmonic():
             If ``sumphonon = True``, nqpoint = 1 but its dimension in attribute
             is kept for consistency.
 
-        :raise AttributeError: If temperature and pressure are defined neither here nor during initialization
+        :raise Exception: If temperature and pressure are defined neither here nor during initialization
         """
         import warnings
         import numpy as np
@@ -622,18 +619,17 @@ class Harmonic():
         # Generate temperature and pressure series
         if kwargs:
             if 'temperature' in kwargs:
-                if hasattr(self, 'temperature'):
+                if len(self.temperature) > 0:
                     warnings.warn('Temperature attribute exists. Input temperatures will be used to update the attribute.')
                 self.temperature = np.array(kwargs['temperature'], dtype=float, ndmin=1)
 
             if 'pressure' in kwargs:
-                if hasattr(self, 'pressure'):
+                if len(self.pressure) > 0:
                     warnings.warn('Pressure attribute exists. Input pressures will be used to update the attribute.')
                 self.pressure = np.array(kwargs['pressure'], dtype=float, ndmin=1)
-        else:
-            if not hasattr(self, 'temperature') or not hasattr(self, 'pressure'):
-                raise AttributeError('Temperature and pressure should be specified.')
 
+        if len(self.temperature)==0 or len(self.pressure)==0:
+            raise Exception('Temperature and pressure should be specified.')
         zp_energy = np.zeros([self.nqpoint,], dtype=float)
         u_vib = np.zeros([self.nqpoint, len(self.temperature)], dtype=float)
         entropy = np.zeros([self.nqpoint, len(self.temperature)], dtype=float)
