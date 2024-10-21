@@ -555,8 +555,8 @@ class PhononBASE():
         for q, freq in enumerate(crysout.frequency):
             neg_rank = np.where(freq <= threshold)[0]
             if len(neg_rank) == 0: continue
-            warnings.warn('Negative frequencies detected.\n  Calculated thermodynamics might be inaccurate. Negative frequencies will be substituted by 0.',
-                          stacklevel=2)
+            # warnings.warn('Negative frequencies detected.\n  Calculated thermodynamics might be inaccurate. Negative frequencies will be substituted by 0.',
+            #               stacklevel=2)
 
             if len(neg_rank) > 3:
                 warnings.warn('MORE THAN 3 IMAGINARY MODES! The structure is highly probable to be unstable.', stacklevel=2)
@@ -818,5 +818,16 @@ class POutBASE():
         spec = df[0][title[0]+7 : end[0]].map(lambda x: x.strip().split()).tolist()
         spec = np.array(spec, dtype=float)
         return spec
+
+    def get_Fermi(self):
+        """
+        Get Fermi energy in eV from the common block.
+        """
+        import pandas as pd
+        from CRYSTALpytools.units import H_to_eV
+
+        df = pd.DataFrame(self.data)
+        fline = df[df[0].str.contains(r'^\s*N\. OF SCF CYCLES.+FERMI ENERGY')].index
+        return H_to_eV(float(df[0].loc[fline].strip().split()[-1]))
 
 
