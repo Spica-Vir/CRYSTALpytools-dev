@@ -318,12 +318,14 @@ class BXSF():
         band_index (list|str|int): Indices of bands. Starting from 1. For spin-
             polarized cases, one can specify '4a' for the :math:`\\alpha` state
             of band 4. If only band number is given for spin polarized bands,
-            both spin states are saved. ``[]`` for all the bands.
+            both spin states are saved. Use 'vb' and 'cb' for the highest
+            valance or the lowest conduction band. ``[]`` for all bands. 
     """
     def __init__(self, rlattice, bands, efermi=0., band_index=[]):
         import warnings, re
         import numpy as np
         from pymatgen.core.structure import Structure
+        from CRYSTALpytools.electronics import FermiSurface
 
         if isinstance(rlattice, Structure):
             self.rlattice = rlattice.lattice.reciprocal_lattice
@@ -336,38 +338,10 @@ class BXSF():
         if bands.ndim != 5:
             raise ValueError("Input band must be in the shape of nBand*nX*nY*nZ*nSpin.")
 
-        band_index = np.unique(np.array(band_index, dtype=str, ndmin=1))
-        spin = bands.shape[-1]; iband = []; ispin = []; self.band_labels = []
-        for ib, b in enumerate(band_index):
-            ibd = int(re.findall(r'[0-9]+', b)[0])
-            if 'a' in b.lower():
-                if spin==1:
-                    warnings.warn("Not a spin-polarized system. Input 'a'/'b' are ignored.",
-                                  stacklevel=2)
-                    iband.append(ibd); ispin.append(0)
-                    self.band_labels.append(str(ibd))
-                else:
-                    iband.append(ibd); ispin.append(0)
-                    self.band_labels.append(str(ibd)+'a')
-            # in case of 'ab' as input
-            if 'b' in b.lower():
-                if spin==1:
-                    warnings.warn("Not a spin-polarized system. Input 'a'/'b' are ignored.",
-                                  stacklevel=2)
-                    iband.append(ibd); ispin.append(0)
-                    self.band_labels.append(str(ibd))
-                else:
-                    iband.append(ibd); ispin.append(1)
-                    self.band_labels.append(str(ibd)+'b')
-            if 'a' not in b.lower() and 'b' not in b.lower():
-                if spin==1:
-                    iband.append(ibd); ispin.append(0)
-                    self.band_labels.append(str(ibd))
-                else:
-                    iband.append(ibd); ispin.append(0)
-                    self.band_labels.append(str(ibd)+'a')
-                    iband.append(ibd); ispin.append(1)
-                    self.band_labels.append(str(ibd)+'b')
+        if len(band_index) == 0:
+            band_index = [i+1 for i in range(bands.shape[0])]
+        iband, ispin = FermiSurface._get_band_index(bands, band_index)
+
         self.bands = np.zeros([len(iband), bands.shape[1], bands.shape[2], bands.shape[3]])
         for i in range(len(iband)):
             self.bands[i] = bands[iband[i], :, :, :, ispin[i]]

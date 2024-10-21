@@ -1580,7 +1580,8 @@ class Crystal_output:
         Read phonon density of states from CRYSTAL output file.
 
         Args:
-            read_INS (bool): Read the inelastic neutron scattering spectra.
+            read_INS (bool): Read the inelastic neutron scattering spectra,
+                instead of the PDOS.
             atom_prj (list): Read the projections of atoms with specified labels.
             element_prj (list): Read projections of elements with specified
                 conventional atomic numbers.
@@ -2625,41 +2626,103 @@ class Properties_output(POutBASE):
 
     def read_electron_band(self, band_file):
         """
-        Generate bands object from CRYSTAL BAND.DAT or fort.25 file. Energy
+        Generate bands object from CRYSTAL BAND.DAT / fort.25 file. Energy
         unit: eV. E Fermi is aligned to 0.
 
         Args:
-            band_file (str): Name of BAND.DAT or fort.25 file
+            band_file (str): Name of BAND.DAT / fort.25 file.
 
         Returns:
-            self.bands (ElectronBand): An ``CRYSTALpytools.electronics.ElectronBand`` object
+            self.bands (ElectronBand): The :ref:`electronics.ElectronBand <ref-ElectronBand>` object.
         """
+        from CRYSTALpytools.base.extfmt import CrgraParser, DLVParser
+        from CRYSTALpytools.units import H_to_eV, angstrom_to_au
         from CRYSTALpytools.electronics import ElectronBand
         import warnings
 
-        if not hasattr(self, 'file_name'):
-            warnings.warn('Properties output file not found: 3D k path not available',
-                          stacklevel=2)
-            self.bands = ElectronBand.from_file(band_file)
+        file = open(band)
+        flag = file.readline()
+        file.close()
+        if '-%-' in flag: # fort.25
+            bandout = CrgraParser.band(band_file)
+        elif '#' in flag: # BAND.DAT
+            bandout = DLVParser.band(band_file)
         else:
-            self.bands = ElectronBand.from_file(band_file, self.file_name)
+            raise Exception("Pattern not found in '{}'. Is it a band structure file?".format(band_file))
 
+        if not hasattr(self, 'file_name'):
+            warnings.warn('Properties output file not found: 3D k path not available.',
+                          stacklevel=2)
+            struc = None; t3d = None; k3d = None
+        else:
+            struc = super().get_geometry()
+            t3d, k3d = super().get_3dkcoord()
+        self.bands = ElectronBand(
+            bandout[0], bandout[1], bandout[2], bandout[3], bandout[4],
+            bandout[5], struc, None, t3d, k3d, bandout[6])
         return self.bands
+
+
+    def read_Fermi_surface(self, f35_file):
+        """
+        Generate the Fermi surface, i.e., band energy across the first brillouin
+        zone :math:`E(k)` from CRYSTAL fort.35 file (with 'DLV_BAND' keyword).
+        Energy unit: eV.
+
+        .. note::
+
+            When output is available, energies are aligned to :math:`E_{F}=0`.
+            Otherwise values reported in fort.35 file are used.
+
+        Args:
+            f35_file (str): Name of fort.35 file.
+
+        Returns:
+            self.FermiSurf (FermiSurface): The :ref:`electronics.FermiSurface <ref-FermiSurface>` object
+        """
+        from CRYSTALpytools.base.extfmt import DLVParser
+        from CRYSTALpytools.units import H_to_eV, angstrom_to_au
+        from CRYSTALpytools.electronics import FermiSurface
+        import warnings
+
+        rlatt, band, _ = DLVParser.fort35(f35_file)
+        rlatt = angstrom_to_au(rlatt) # A^-1 to Bohr^-1
+        band = H_to_eV(band)
+        if not hasattr(self, 'file_name'):
+            warnings.warn('Properties output file not found: Fermi energy not available.',
+                          stacklevel=2)
+            efermi = 0.
+        else:
+            efermi = super().get_Fermi()
+        self.FermiSurf = FermiSurface(rlatt, band, efermi=efermi, unit='eV')
+        return self.FermiSurf
+
 
     def read_electron_dos(self, dos_file):
         """
-        Generate doss object from CRYSTAL DOSS.DAT or fort.25 file. Energy
+        Get density of states from CRYSTAL DOSS.DAT or fort.25 file. Energy
         unit: eV. E Fermi is aligned to 0.
+
         Args:
             dos_file (str): Name of DOSS.DAT or fort.25 file
-
         Returns:
-            self.doss (ElectronDOS): An ``CRYSTALpytools.electronics.ElectronDOS`` object
+            self.doss (ElectronDOS): The :ref:`electronics.ElectronDOS <ref-ElectronDOS>` object.
         """
+        from CRYSTALpytools.base.extfmt import CrgraParser, DLVParser
         from CRYSTALpytools.electronics import ElectronDOS
 
-        self.doss = ElectronDOS.from_file(dos_file)
+        file = open(dos_file)
+        flag = file.readline()
+        file.close()
+        if '-%-' in flag:  # fort.25 file format
+            dosout = CrgraParser.dos(dos_file)
+        elif '#' in flag: # DOSS.DAT
+            dosout = DLVParser.dos(dos_file)
+        else:
+            raise Exception("Pattern not found in '{}'. Is it a DOSS file?".format(dos_file))
 
+        self.doss = ElectronDOS(spin=dosout[0], efermi=dosout[1], doss=dosout[2],
+                   energy=dosout[3], unit=dosout[4])
         return self.doss
 
 #-----------------------------2D scalar field----------------------------------#
