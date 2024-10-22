@@ -2640,7 +2640,7 @@ class Properties_output(POutBASE):
         from CRYSTALpytools.electronics import ElectronBand
         import warnings
 
-        file = open(band)
+        file = open(band_file)
         flag = file.readline()
         file.close()
         if '-%-' in flag: # fort.25

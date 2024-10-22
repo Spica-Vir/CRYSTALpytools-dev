@@ -115,7 +115,7 @@ class ElectronBand():
                 level.
             self.gap_pos (array): Coordinates of vbm (1st element) and cbm
                 (2nd element) 3D coordinates are returned if ``self.k_path3d``
-                is available. For spin-polarized cases, ``self.gap_pos[0, :]``
+                is available. For spin-polarized cases, ``self.gap_pos[0]``
                 are vbm and cbm of :math:`\\alpha` state.
         """
         import numpy as np
@@ -147,6 +147,13 @@ class ElectronBand():
             else:
                 kvbm = self.k_path[ivbm]
                 kcbm = self.k_path[icbm]
+
+            if vbm > 0 or cbm < 0: gap = 0.
+            else: gap = cbm - vbm
+            self.gap[ispin] = gap
+            self.vbm[ispin] = vbm
+            self.cbm[ispin] = cbm
+            self.gap_pos[ispin] = np.array([kvbm, kcbm])
 
         if self.spin == 1:
             self.gap = self.gap[0]
@@ -391,7 +398,7 @@ class FermiSurface():
             self.cbm (float): Conduction band minimum, with reference to Fermi
                 level.
             self.gap_pos (array): Coordinates of vbm (1st element) and cbm
-                (2nd element). For spin-polarized cases, ``self.gap_pos[0, :]``
+                (2nd element). For spin-polarized cases, ``self.gap_pos[0]``
                 are vbm and cbm of :math:`\\alpha` state.
         """
         import numpy as np
