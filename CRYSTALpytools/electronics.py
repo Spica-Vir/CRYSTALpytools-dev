@@ -465,9 +465,9 @@ class FermiSurface():
             self.gap_pos = self.gap_pos[0]
         return self.gap, self.vbm, self.cbm, self.gap_pos
 
-    def plot(self, unit='eV', band_index='vb', isovalue=0., colormap='jet',
-             opacity=1.0, transparent=False, BZ_plot=True, BZ_scale=1.0,
-             BZ_color=(0., 0., 0.), BZ_linewidth=1.0, tick_pos=[],
+    def plot(self, band_index='vb', isovalue=0., interp='no interp', interp_size=1,
+             colormap='jet', opacity=1.0, transparent=False, BZ_plot=True,
+             BZ_scale=1.0, BZ_color=(0., 0., 0.), BZ_linewidth=1.0, tick_pos=[],
              tick_label=[], **kwargs):
         """
         Plot :math:`E(k)` in the first brillouin zone (1BZ).
@@ -486,13 +486,23 @@ class FermiSurface():
             For 3D systems, displaying multiple bands is discouraged. The
             same ``isovalue`` and ``colormap`` applies to all the bands.
 
+        .. note ::
+
+            Too large ``interp_size`` might be very memory and cpu demanding!
+
         Args:
-            unit (str): 'eV' for eV-Angstrom. 'a.u.' for Hartree-Bohr.
             band_index (list|str|int): Indices of bands to plot. Starting from
                 1. For spin-polarized cases, one can specify '4a' for the
                 :math:`\\alpha` state of band 4. Use 'vb' and 'cb' to display
                 the highest valance or the lowest conduction band.
             isovalue (float|list): *3D system only* Isovalue of surfaces.
+            interp (str): Interpolate data to smoothen the plot. 'no interp' or
+                'linear', 'nearest', 'slinear', 'cubic'. please refer to
+                `scipy.interpolate.RegularGridInterpolator <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.RegularGridInterpolator.html>`_
+                 The interpolated data is not saved.
+            interp_size (list[int]|int): The new size of interpolated data
+                (list) or a scaling factor. *Valid only when ``interp`` is not
+                'no interp'*.
             colormap (str): `Mayavi colormap <https://docs.enthought.com/mayavi/mayavi/mlab_changing_object_looks.html>`_.
             opacity (float): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
             transparent (bool): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
@@ -513,6 +523,7 @@ class FermiSurface():
         import copy, warnings, re
         import numpy as np
         from mayavi import mlab
+        from scipy.interpolate import interpn
 
         #---------------------------------------------------------------------#
         #                                NOTE                                 #
@@ -522,9 +533,6 @@ class FermiSurface():
         #---------------------------------------------------------------------#
 
         # Input processing and sanity check
-        oldunit = self.unit
-        if unit.lower() != oldunit.lower(): self._set_unit(unit)
-
         k_points = np.array([self.bands.shape[3], self.bands.shape[2], self.bands.shape[1]], dtype=int)
         iband, ispin = FermiSurface._get_band_index(self.bands, band_index)
 
@@ -561,23 +569,89 @@ class FermiSurface():
             yrange = np.max(verteices[:, 1])-np.min(verteices[:, 1])
             zscale = np.max([xrange, yrange]) / (emax - emin)
 
+        # 2 indices used by 2D systems
+        prdd = np.where(k_points>1)[0]
+        isod = np.where(k_points==1)
+        if len(isod) == 1: isod = isod[0]
+        else: isod = -1
+
+        # Interpolation
+        if interp.lower() not in ['no interp', 'linear', 'nearest', 'slinear', 'cubic']:
+            raise ValueError("Unknown interpolation method : '{}'.".format(interp))
+        interp = interp.lower()
+        interp_size = np.array(interp_size, dtype=int, ndmin=1)
+        if len(interp_size) == 1:
+            if interp_size[0] < 2 and interp != 'no interp':
+                warnings.warn('Scale factor < 2, no interpolation is performed.', stacklevel=2)
+                interp = 'no interp'
+            else:
+                interp_size = np.array(k_points * interp_size[0], dtype=int)
+                if self.dimension == 2: interp_size[isod] = 1
+
         # Band data
         fig = mlab.figure(bgcolor=(1, 1, 1))
         for ibd, isp in zip(iband, ispin):
-            # Expand to a 2x2 supercell
-            pband = np.zeros(k_points*2)
-            pband[:k_points[0], :k_points[1], :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
-            pband[k_points[0]:, :k_points[1], :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
-            pband[:k_points[0], k_points[1]:, :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
-            pband[:k_points[0], :k_points[1], k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
-            pband[k_points[0]:, k_points[1]:, :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
-            pband[k_points[0]:, :k_points[1], k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
-            pband[:k_points[0], k_points[1]:, k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
-            pband[k_points[0]:, k_points[1]:, k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            # Interpolate band
+            if interp != 'no inter':
+                if self.dimension == 3:
+                    newgrid = np.meshgrid(
+                        np.linspace(0, 1, interp_size[0]),
+                        np.linspace(0, 1, interp_size[1]),
+                        np.linspace(0, 1, interp_size[2]),
+                        indexing='ij'
+                    )
+                    newgrid = np.array([i.flatten() for i in newgrid])
+                    intband = interpn(
+                        (
+                            np.linspace(0, 1, k_points[0]),
+                            np.linspace(0, 1, k_points[1]),
+                            np.linspace(0, 1, k_points[2]),
+                        ),
+                        np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0]),
+                        newgrid.T,
+                        method=interp,
+                    )
+                else:
+                    newgrid = np.meshgrid(
+                        np.linspace(0, 1, interp_size[prdd[0]]),
+                        np.linspace(0, 1, interp_size[prdd[1]]),
+                        indexing='ij'
+                    )
+                    newgrid = np.array([i.flatten() for i in newgrid])
 
-            if k_points[0] == 1: pband = pband[0]
-            elif k_points[1] == 1: pband = pband[:, 0, :]
-            elif k_points[2] == 1: pband = pband[:, :, 0]
+                    intband = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+                    if isod == 0: intband = intband[0]
+                    elif isod == 1: intband = intband[:, 0, :]
+                    elif isod == 2: intband = intband[:, :, 0]
+                    intband = interpn(
+                        (
+                            np.linspace(0, 1, k_points[prdd[0]]),
+                            np.linspace(0, 1, k_points[prdd[1]]),
+                        ),
+                        intband,
+                        newgrid.T,
+                        method=interp,
+                    )
+                intband = intband.reshape(interp_size) # add the dimension back
+                del newgrid
+            else:
+                intband = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+                interp_size = k_points
+            # Expand to a 2x2 supercell
+            pband = np.zeros(interp_size*2)
+            pband[:interp_size[0], :interp_size[1], :interp_size[2]] = intband
+            pband[interp_size[0]:, :interp_size[1], :interp_size[2]] = intband
+            pband[:interp_size[0], interp_size[1]:, :interp_size[2]] = intband
+            pband[:interp_size[0], :interp_size[1], interp_size[2]:] = intband
+            pband[interp_size[0]:, interp_size[1]:, :interp_size[2]] = intband
+            pband[interp_size[0]:, :interp_size[1], interp_size[2]:] = intband
+            pband[:interp_size[0], interp_size[1]:, interp_size[2]:] = intband
+            pband[interp_size[0]:, interp_size[1]:, interp_size[2]:] = intband
+            del intband
+
+            if isod == 0: pband = pband[0]
+            elif isod == 1: pband = pband[:, 0, :]
+            elif isod == 2: pband = pband[:, :, 0]
             kptnew = np.array(pband.shape, dtype=int)
 
             if self.dimension == 3:
@@ -615,11 +689,10 @@ class FermiSurface():
                 pts = (pts+1) @ self.rlattice/np.array(kptnew/2) - self.rlattice[0] - self.rlattice[1] - self.rlattice[2]
                 polydata.points = pts
             else:
-                idx = np.where(k_points>1)[0]
                 fracx = np.linspace(1, -1, kptnew[0], endpoint=False)[::-1]
                 fracy = np.linspace(1, -1, kptnew[1], endpoint=False)[::-1]
-                cartx = fracx.reshape([-1, 1]) @ self.rlattice[idx[0]].reshape([1, 3])
-                carty = fracy.reshape([-1, 1]) @ self.rlattice[idx[1]].reshape([1, 3])
+                cartx = fracx.reshape([-1, 1]) @ self.rlattice[prdd[0]].reshape([1, 3])
+                carty = fracy.reshape([-1, 1]) @ self.rlattice[prdd[1]].reshape([1, 3])
                 mask = np.zeros_like(pband, dtype=bool)
                 for i in range(kptnew[0]):
                     x = cartx[i]
@@ -645,9 +718,8 @@ class FermiSurface():
                 # Non-orthogonal grid
                 polydata = surf.actor.actors[0].mapper.input
                 pts = np.array(polydata.points)
-                pts[:, idx] = (pts[:, idx]+1) @ self.rlattice[idx, :][:, idx]/np.array(kptnew/2)
-                ridx = np.where(k_points==1)[0]
-                pts[:, ridx] = pts[:, ridx] * zscale
+                pts[:, prdd] = (pts[:, prdd]+1) @ self.rlattice[prdd, :][:, prdd]/np.array(kptnew/2)
+                pts[:, isod] = pts[:, isod] * zscale
                 polydata.points = pts
 
         # Plot 1BZ
@@ -673,9 +745,6 @@ class FermiSurface():
             mview[k] = v
         mlab.view(**mview)
         mlab.show()
-
-        # unit
-        if unit.lower() != oldunit.lower(): self._set_unit(oldunit)
         return fig
 
     def to_bxsf(self, filename, band_index=[]):
