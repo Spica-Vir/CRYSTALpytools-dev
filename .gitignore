@@ -8,6 +8,7 @@
 # *.prop3d
 # Massive, non-original CRYSTAL files are not synced
 *.xsf
+*.bxsf
 
 #OsX stuff
 *.DS_Store
