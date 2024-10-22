@@ -559,6 +559,7 @@ class DLVParser():
             iband.append(len(df[0]))
             iband = np.array(iband, ndmin=2, dtype=int)
             nband = iband.shape[1] - 1
+            nspin = 1
         else:
             iaband = df[df[0].str.contains(r'^\s*Alpha band\s+[0-9]+\s*$')].index.tolist()
             ibband = df[df[0].str.contains(r'^\s*Beta band\s+[0-9]+\s*$')].index.tolist()
@@ -566,6 +567,7 @@ class DLVParser():
             ibband.append(len(df[0]))
             iband = np.vstack([iaband, ibband], dtype=int)
             nband = iband.shape[1] - 1
+            nspin = 2
         if nband == 0:
             raise Exception("Band info not found. Check your file name: '{}'.".format(filename))
 
@@ -577,7 +579,6 @@ class DLVParser():
         rlatt[0] = rlatt[0] * ((npt[0]-1)*0.5+1)
         rlatt[1] = rlatt[1] * ((npt[1]-1)*0.5+1)
         rlatt[2] = rlatt[2] * ((npt[2]-1)*0.5+1)
-        nspin = band.shape[0]
         band = np.zeros([nband, npt[2], npt[1], npt[0], nspin], dtype=float)
         for i in range(nband):
             for j in range(nspin):

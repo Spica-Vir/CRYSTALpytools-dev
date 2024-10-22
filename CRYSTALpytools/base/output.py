@@ -827,7 +827,7 @@ class POutBASE():
         from CRYSTALpytools.units import H_to_eV
 
         df = pd.DataFrame(self.data)
-        fline = df[df[0].str.contains(r'^\s*N\. OF SCF CYCLES.+FERMI ENERGY')].index
+        fline = df[df[0].str.contains(r'^\s*N\. OF SCF CYCLES.+FERMI ENERGY')].index[0]
         return H_to_eV(float(df[0].loc[fline].strip().split()[-1]))
 
 

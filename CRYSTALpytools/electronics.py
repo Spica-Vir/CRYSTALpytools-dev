@@ -319,6 +319,7 @@ class FermiSurface():
         self.efermi (float)
         self.BZ (list): Cartesian coordinates of vertices of 1BZ. Arranged in
             planes (i.e., the element of 4\*3 array represents a plane of 4 vertices).
+        self.unit (str): 'eV' or 'a.u.'
     """
     def __init__(self, geometry, bands, efermi=0., unit='eV'):
         import numpy as np
@@ -335,19 +336,26 @@ class FermiSurface():
         if len(self.bands.shape) != 5:
             raise ValueError('Wrong dimensionalities of input band. It must be a nBand*nX*nY*nZ*nSpin array.')
         self.spin = self.bands.shape[-1]
-        self.dimension = len(np.where(self.bands.shape[1:4]>1)[0])
+        idx = np.where(np.array(self.bands.shape[1:4])>1)[0]
+        self.dimension = len(idx)
         # vertices of 1BZ
         self.BZ = []
         if self.dimension == 2:
-            idx = np.where(self.bands.shape[1:4]>1)
-            va = self.rlattice[idx[1]]
-            vb = self.rlattice[idx[0]]
+            idx = 2 - idx[::-1] # to X,Y,Z
+            va = self.rlattice[idx[0], idx]
+            vb = self.rlattice[idx[1], idx]
             vor = Voronoi(np.array([
-                -va-vb, -vb, va-vb, -va, [0, 0, 0], va, -va+vb, vb, va+vb
+                -va-vb, -vb, va-vb, -va, [0, 0], va, -va+vb, vb, va+vb
             ], dtype=float))
             for i in vor.ridge_dict:
                 if i[0] == 4 or i[1] == 4:
-                    self.BZ.append([vor.vertices[j] for j in vor.ridge_dict[i]])
+                    tmpk = []
+                    for j in vor.ridge_dict[i]:
+                        tmp = np.zeros([3,])
+                        tmp[idx[0]] = vor.vertices[j][0]
+                        tmp[idx[1]] = vor.vertices[j][1]
+                        tmpk.append(tmp)
+                    self.BZ.append(np.array(tmpk, dtype=float))
         elif self.dimension == 3:
             va = self.rlattice[0]
             vb = self.rlattice[1]
@@ -361,7 +369,10 @@ class FermiSurface():
                 if i[0] == 13 or i[1] == 13:
                     self.BZ.append([vor.vertices[j] for j in vor.ridge_dict[i]])
         else:
-            raise Exception('Limited to 3D / 2D systems. The dimensionality of band array is {:d}'.format(self.dimension))
+            raise Exception('3D band structure requires 3D/2D grid points. The dimensionality of input grid is {:d} {:d} {:d}'.format(
+                k_points[0], k_points[1], k_points[2]))
+
+        self.unit = unit
 
     @classmethod
     def from_file(cls, band, output=None):
@@ -454,9 +465,10 @@ class FermiSurface():
             self.gap_pos = self.gap_pos[0]
         return self.gap, self.vbm, self.cbm, self.gap_pos
 
-    def plot(self, band_index='vb', isovalue=0., colormap='jet', opacity=1.0,
-             transparent=False, BZ_plot=True, BZ_scale=1.0, BZ_color=(0., 0., 0.),
-             BZ_linewidth=1.0, tick_pos=[], tick_label=[], **kwargs):
+    def plot(self, unit='eV', band_index='vb', isovalue=0., colormap='jet',
+             opacity=1.0, transparent=False, BZ_plot=True, BZ_scale=1.0,
+             BZ_color=(0., 0., 0.), BZ_linewidth=1.0, tick_pos=[],
+             tick_label=[], **kwargs):
         """
         Plot :math:`E(k)` in the first brillouin zone (1BZ).
 
@@ -475,6 +487,7 @@ class FermiSurface():
             same ``isovalue`` and ``colormap`` applies to all the bands.
 
         Args:
+            unit (str): 'eV' for eV-Angstrom. 'a.u.' for Hartree-Bohr.
             band_index (list|str|int): Indices of bands to plot. Starting from
                 1. For spin-polarized cases, one can specify '4a' for the
                 :math:`\\alpha` state of band 4. Use 'vb' and 'cb' to display
@@ -490,6 +503,8 @@ class FermiSurface():
             BZ_color (array): Color of the 1BZ plot. See
                 `Mayavi colormap <https://docs.enthought.com/mayavi/mayavi/mlab_changing_object_looks.html>`_.
             BZ_linewidth (float): Linewidth of the 1BZ plot.
+            tick_pos (array): *Not implemented*
+            tick_label (list): *Not implemented*
             \*\*kwargs: Other keywords passed to the ``mlab.view()`` command to
                 adjust views. By default only ``distance='auto'`` is used.
         Returns:
@@ -499,8 +514,18 @@ class FermiSurface():
         import numpy as np
         from mayavi import mlab
 
+        #---------------------------------------------------------------------#
+        #                                NOTE                                 #
+        #---------------------------------------------------------------------#
+        # For visualization, band has the dimension of nX*nY*nZ. A transpose  #
+        # is needed!                                                          #
+        #---------------------------------------------------------------------#
+
         # Input processing and sanity check
-        k_points = np.array([self.bands.shape[1], self.bands.shape[2], self.bands.shape[3]], dtype=int)
+        oldunit = self.unit
+        if unit.lower() != oldunit.lower(): self._set_unit(unit)
+
+        k_points = np.array([self.bands.shape[3], self.bands.shape[2], self.bands.shape[1]], dtype=int)
         iband, ispin = FermiSurface._get_band_index(self.bands, band_index)
 
         isovalue = np.array(isovalue, dtype=float, ndmin=1)
@@ -521,6 +546,7 @@ class FermiSurface():
             norm = norm / np.linalg.norm(norm)
             norms[ik] = norm
             dists[ik] = np.dot(-k[0], norm)
+            verteices[ik] = k[0]
 
         # Energy scale
         emax = np.max(self.bands[iband, :, :, :, ispin])
@@ -540,14 +566,14 @@ class FermiSurface():
         for ibd, isp in zip(iband, ispin):
             # Expand to a 2x2 supercell
             pband = np.zeros(k_points*2)
-            pband[:k_points[0], :k_points[1], :k_points[2]] = self.bands[ibd, :, :, :, isp]
-            pband[k_points[0]:, :k_points[1], :k_points[2]] = self.bands[ibd, :, :, :, isp]
-            pband[:k_points[0], k_points[1]:, :k_points[2]] = self.bands[ibd, :, :, :, isp]
-            pband[:k_points[0], :k_points[1], k_points[2]:] = self.bands[ibd, :, :, :, isp]
-            pband[k_points[0]:, k_points[1]:, :k_points[2]] = self.bands[ibd, :, :, :, isp]
-            pband[k_points[0]:, :k_points[1], k_points[2]:] = self.bands[ibd, :, :, :, isp]
-            pband[:k_points[0], k_points[1]:, k_points[2]:] = self.bands[ibd, :, :, :, isp]
-            pband[k_points[0]:, k_points[1]:, k_points[2]:] = self.bands[ibd, :, :, :, isp]
+            pband[:k_points[0], :k_points[1], :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            pband[k_points[0]:, :k_points[1], :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            pband[:k_points[0], k_points[1]:, :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            pband[:k_points[0], :k_points[1], k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            pband[k_points[0]:, k_points[1]:, :k_points[2]] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            pband[k_points[0]:, :k_points[1], k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            pband[:k_points[0], k_points[1]:, k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
+            pband[k_points[0]:, k_points[1]:, k_points[2]:] = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
 
             if k_points[0] == 1: pband = pband[0]
             elif k_points[1] == 1: pband = pband[:, 0, :]
@@ -626,22 +652,30 @@ class FermiSurface():
 
         # Plot 1BZ
         if BZ_plot == True:
-            if ndimen == 3:
+            if self.dimension == 3:
                 for kp in k_path:
                     kplt = np.vstack([kp, kp[0]]) / BZ_scale
                     mlab.plot3d(kplt[:, 0], kplt[:, 1], kplt[:, 2],
                                 figure=fig, color=BZ_color, line_width=BZ_linewidth)
             else:
                 for kp in k_path:
-                    kplt = kp / BZ_scale + BZ_origin
+                    kplt = kp / BZ_scale
                     mlab.plot3d(kplt[:, 0], kplt[:, 1], kplt[:, 2],
                                 figure=fig, color=BZ_color, line_width=BZ_linewidth)
 
+        # colorbar
+        mlab.scalarbar(title='E-Ef ({})'.format(self.unit),
+                       orientation='vertical',
+                       nb_labels=5,
+                       label_fmt='%.2f')
         mview = {'distance' : 'auto', 'figure' : fig}
         for k, v in zip(kwargs.keys(), kwargs.values()):
             mview[k] = v
         mlab.view(**mview)
         mlab.show()
+
+        # unit
+        if unit.lower() != oldunit.lower(): self._set_unit(oldunit)
         return fig
 
     def to_bxsf(self, filename, band_index=[]):
@@ -649,7 +683,11 @@ class FermiSurface():
         **3D data only**
 
         Write data into the `XCrySDen <http://www.xcrysden.org/>`_ BXSF file
-        format. Unit: :math:`\\AA^{-1}` and eV.
+        format. Unit: :math:`\\AA^{-1}` and eV. Band labels:
+
+        * \[0\:-2\]: Band index strating from 1;  
+        * -2: Useless, 0;  
+        * -1: Spin. Alpha / No spin, 1; Beta, 2
 
         Args:
             filename (str): The output xsf filename.
@@ -665,7 +703,9 @@ class FermiSurface():
             raise Exception('BXSF only supports 3D band data.')
 
         self._set_unit('eV')
-        return BXSF(self.rlattice, self.bands, efermi=self.efermi, band_index=band_index)
+        BXSF(self.rlattice, self.bands,
+             efermi=self.efermi, band_index=band_index).write(filename)
+        return
 
     @classmethod
     def _get_band_index(cls, band, index):

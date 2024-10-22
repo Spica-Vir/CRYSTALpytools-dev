@@ -2694,7 +2694,7 @@ class Properties_output(POutBASE):
             efermi = 0.
         else:
             efermi = super().get_Fermi()
-        self.FermiSurf = FermiSurface(rlatt, band, efermi=efermi, unit='eV')
+        self.FermiSurf = FermiSurface(rlatt, band-efermi, efermi=efermi, unit='eV')
         return self.FermiSurf
 
 

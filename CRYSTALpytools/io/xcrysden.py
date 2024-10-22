@@ -313,7 +313,8 @@ class BXSF():
     Args:
         relattice (array|CStructure): Reciprocal lattice matrix or structure
             object.
-        bands (array): nBand\*nX\*nY\*nZ\*nSpin array. Unit: eV.
+        bands (array): nBand\*nX\*nY\*nZ\*nSpin array. Unit: eV. Aligned to
+            :math:`E_{F}=0`.
         efermi (float): Fermi energy. Unit: eV.
         band_index (list|str|int): Indices of bands. Starting from 1. For spin-
             polarized cases, one can specify '4a' for the :math:`\\alpha` state
@@ -330,7 +331,7 @@ class BXSF():
         if isinstance(rlattice, Structure):
             self.rlattice = rlattice.lattice.reciprocal_lattice
         else:
-            self.rlattice = np.array(rlatt, dtype=float)
+            self.rlattice = np.array(rlattice, dtype=float)
 
         self.efermi = efermi
 
@@ -343,12 +344,19 @@ class BXSF():
         iband, ispin = FermiSurface._get_band_index(bands, band_index)
 
         self.bands = np.zeros([len(iband), bands.shape[1], bands.shape[2], bands.shape[3]])
+        self.band_labels = np.zeros_like(np.zeros([len(iband),]), dtype=str)
         for i in range(len(iband)):
             self.bands[i] = bands[iband[i], :, :, :, ispin[i]]
+            self.band_labels[i] = '{:d}0{:d}'.format(iband[i]+1, ispin[i]+1)
+        self.bands = self.bands + self.efermi
 
     def write(self, filename, grid_name='UNKNOWN'):
         """
-        Write Fermi surface data into a new XSF file.
+        Write Fermi surface data into a new XSF file. Band labels:
+
+        * \[0\:-2\]: Band index strating from 1;  
+        * -2: Useless, 0;  
+        * -1: Spin. Alpha / No spin, 1; Beta, 2
 
         Args:
             filename (str): Output name.
