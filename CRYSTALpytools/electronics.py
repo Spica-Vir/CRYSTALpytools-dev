@@ -466,9 +466,9 @@ class FermiSurface():
         return self.gap, self.vbm, self.cbm, self.gap_pos
 
     def plot(self, band_index='vb', isovalue=0., interp='no interp', interp_size=1,
-             colormap='jet', opacity=1.0, transparent=False, BZ_plot=True,
-             BZ_scale=1.0, BZ_color=(0., 0., 0.), BZ_linewidth=1.0, tick_pos=[],
-             tick_label=[], **kwargs):
+             fig_scale=1.0, colormap='jet', opacity=1.0, transparent=False,
+             BZ_plot=True, BZ_scale=1.0, BZ_color=(0., 0., 0.), BZ_linewidth=1.0,
+             tick_pos=[], tick_label=[], **kwargs):
         """
         Plot :math:`E(k)` in the first brillouin zone (1BZ).
 
@@ -503,6 +503,9 @@ class FermiSurface():
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            fig_scale (float): In cases of small 1BZs, scale the figure by this
+                factor to get reasonable resolution and line thickness of 1BZ
+                boundaries.
             colormap (str): `Mayavi colormap <https://docs.enthought.com/mayavi/mayavi/mlab_changing_object_looks.html>`_.
             opacity (float): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
             transparent (bool): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
@@ -589,7 +592,7 @@ class FermiSurface():
                 if self.dimension == 2: interp_size[isod] = 1
 
         # Band data
-        fig = mlab.figure(bgcolor=(1, 1, 1))
+        fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
         for ibd, isp in zip(iband, ispin):
             # Interpolate band
             if interp != 'no inter':
@@ -687,7 +690,7 @@ class FermiSurface():
                 polydata = contour.actor.actors[0].mapper.input
                 pts = np.array(polydata.points)
                 pts = (pts+1) @ self.rlattice/np.array(kptnew/2) - self.rlattice[0] - self.rlattice[1] - self.rlattice[2]
-                polydata.points = pts
+                polydata.points = pts * fig_scale
             else:
                 fracx = np.linspace(1, -1, kptnew[0], endpoint=False)[::-1]
                 fracy = np.linspace(1, -1, kptnew[1], endpoint=False)[::-1]
@@ -720,18 +723,18 @@ class FermiSurface():
                 pts = np.array(polydata.points)
                 pts[:, prdd] = (pts[:, prdd]+1) @ self.rlattice[prdd, :][:, prdd]/np.array(kptnew/2)
                 pts[:, isod] = pts[:, isod] * zscale
-                polydata.points = pts
+                polydata.points = pts * fig_scale
 
         # Plot 1BZ
         if BZ_plot == True:
             if self.dimension == 3:
                 for kp in k_path:
-                    kplt = np.vstack([kp, kp[0]]) / BZ_scale
+                    kplt = np.vstack([kp, kp[0]]) / BZ_scale * fig_scale
                     mlab.plot3d(kplt[:, 0], kplt[:, 1], kplt[:, 2],
                                 figure=fig, color=BZ_color, line_width=BZ_linewidth)
             else:
                 for kp in k_path:
-                    kplt = kp / BZ_scale
+                    kplt = kp / BZ_scale * fig_scale
                     mlab.plot3d(kplt[:, 0], kplt[:, 1], kplt[:, 2],
                                 figure=fig, color=BZ_color, line_width=BZ_linewidth)
 
