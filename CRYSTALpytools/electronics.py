@@ -465,26 +465,25 @@ class FermiSurface():
             self.gap_pos = self.gap_pos[0]
         return self.gap, self.vbm, self.cbm, self.gap_pos
 
-    def plot(self, band_index='vb', isovalue=0., interp='no interp', interp_size=1,
-             fig_scale=1.0, colormap='jet', opacity=1.0, transparent=False,
-             BZ_plot=True, BZ_scale=1.0, BZ_color=(0., 0., 0.), BZ_linewidth=1.0,
-             tick_pos=[], tick_label=[], **kwargs):
+    def plot(self, band_index='vb', isovalue=0., interp='no interp',
+             interp_size=1, colormap='jet', opacity=1.0, transparent=False,
+             BZ_plot=True, BZ_scale=1.0, BZ_color=(0., 0., 0.),
+             BZ_linewidth=1.0, tick_pos=[], tick_label=[], **kwargs):
         """
         Plot :math:`E(k)` in the first brillouin zone (1BZ).
-
-        * For 3D systems, it is displayed as isosurfaces in 1BZ.  
-        * For 2D systems, the distribution is displayed, so ``isovalue`` is
-            disabled.
 
         .. note ::
 
             `MayaVi <https://docs.enthought.com/mayavi/mayavi/>`_ is used to
             display :math:`E(k)`, which is not installed by default.
 
-        .. note ::
+        * For 3D systems, it is displayed as isosurfaces of :math:`E(k)`.  
+        * For 2D systems, the distribution is displayed, so ``isovalue`` is
+            disabled.
 
-            For 3D systems, displaying multiple bands is discouraged. The
-            same ``isovalue`` and ``colormap`` applies to all the bands.
+        For 3D systems, displaying multiple bands is discouraged. But the user
+        can still visualize the isosurfaces of multiple bands and the same
+        ``isovalue`` and ``colormap`` applies to all the bands.
 
         .. note ::
 
@@ -498,14 +497,11 @@ class FermiSurface():
             isovalue (float|list): *3D system only* Isovalue of surfaces.
             interp (str): Interpolate data to smoothen the plot. 'no interp' or
                 'linear', 'nearest', 'slinear', 'cubic'. please refer to
-                `scipy.interpolate.RegularGridInterpolator <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.RegularGridInterpolator.html>`_
+                `scipy.interpolate.interpn <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.interpn.html>`_
                  The interpolated data is not saved.
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
-            fig_scale (float): In cases of small 1BZs, scale the figure by this
-                factor to get reasonable resolution and line thickness of 1BZ
-                boundaries.
             colormap (str): `Mayavi colormap <https://docs.enthought.com/mayavi/mayavi/mlab_changing_object_looks.html>`_.
             opacity (float): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
             transparent (bool): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
@@ -526,7 +522,7 @@ class FermiSurface():
         import copy, warnings, re
         import numpy as np
         from mayavi import mlab
-        from scipy.interpolate import interpn
+        from scipy.interpolate import interpn # , LinearNDInterpolator
 
         #---------------------------------------------------------------------#
         #                                NOTE                                 #
@@ -582,14 +578,21 @@ class FermiSurface():
         if interp.lower() not in ['no interp', 'linear', 'nearest', 'slinear', 'cubic']:
             raise ValueError("Unknown interpolation method : '{}'.".format(interp))
         interp = interp.lower()
+
         interp_size = np.array(interp_size, dtype=int, ndmin=1)
         if len(interp_size) == 1:
-            if interp_size[0] < 2 and interp != 'no interp':
-                warnings.warn('Scale factor < 2, no interpolation is performed.', stacklevel=2)
-                interp = 'no interp'
+            if interp_size[0] < 2: interp = 'no interp'
             else:
                 interp_size = np.array(k_points * interp_size[0], dtype=int)
                 if self.dimension == 2: interp_size[isod] = 1
+        else:
+            if np.all(interp_size<1): interp = 'no interp'
+
+        # Fig scale, 1BZ might be very small for large systems.
+        # Get a self-adaptative scaling factor. Applied only on plotted scenes
+        fig_scale = 1 / np.max([np.linalg.norm(self.rlatt[0]),
+                                np.linalg.norm(self.rlatt[1]),
+                                np.linalg.norm(self.rlatt[2])])
 
         # Band data
         fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
@@ -657,13 +660,16 @@ class FermiSurface():
             elif isod == 2: pband = pband[:, :, 0]
             kptnew = np.array(pband.shape, dtype=int)
 
-            if self.dimension == 3:
+            if self.dimension == 3: # 3D plot
                 fracx = np.linspace(1, -1, kptnew[0], endpoint=False)[::-1]
                 fracy = np.linspace(1, -1, kptnew[1], endpoint=False)[::-1]
                 fracz = np.linspace(1, -1, kptnew[2], endpoint=False)[::-1]
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[0].reshape([1, 3])
                 carty = fracy.reshape([-1, 1]) @ self.rlattice[1].reshape([1, 3])
                 cartz = fracz.reshape([-1, 1]) @ self.rlattice[2].reshape([1, 3])
+                # Currently 3D volume plot do not display nan values properly.
+                # if volume_3d == True:
+                #     interplator = LinearNDInterpolator(GRID, intband.flatten(), rescale=False)
                 for i in range(kptnew[0]):
                     x = cartx[i]
                     for j in range(kptnew[1]):
@@ -691,7 +697,7 @@ class FermiSurface():
                 pts = np.array(polydata.points)
                 pts = (pts+1) @ self.rlattice/np.array(kptnew/2) - self.rlattice[0] - self.rlattice[1] - self.rlattice[2]
                 polydata.points = pts * fig_scale
-            else:
+            else: # 2D plot
                 fracx = np.linspace(1, -1, kptnew[0], endpoint=False)[::-1]
                 fracy = np.linspace(1, -1, kptnew[1], endpoint=False)[::-1]
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[prdd[0]].reshape([1, 3])
