@@ -490,8 +490,7 @@ class Harmonic():
         Args:
             edft (float): Electron total energy in kJ/mol.
             qpoint (list[list[array[float], float]]): nQpoint\*2 list of: 1\*3
-                array of fractional coordinate and weight of qpoint (maximum
-                value normalized to 1).
+                array of fractional coordinate and weight of qpoint.
             frequency (array[float]): Array of frequencies. Unit: THz
             eigenvector (array[float]): Normalized eigenvectors to 1.
             symmetry (array[str]): Irreducible representations in Mulliken symbols.
@@ -2294,7 +2293,7 @@ class Phonopy():
             nqpoint = len(qinfo)
 
         natom = int(len(data['phonon'][0]['band']) / 3)
-        qpoint = [[np.zeros([3, 1]), 0] for i in range(nqpoint)]
+        qpoint = [[np.zeros([3, 1]), 1.] for i in range(nqpoint)]
         frequency = np.zeros([nqpoint, 3 * natom])
         # Read phonon
         real_q = 0
@@ -2316,9 +2315,6 @@ class Phonopy():
 
         if real_q < nqpoint:
             raise Exception('Some q points are missing from the yaml file.')
-        # Normalize the weight
-        tweight = np.sum([q[1] for q in qpoint])
-        qpoint = [[q[0], q[1]/tweight] for q in qpoint]
         return qpoint, frequency
 
     @classmethod
