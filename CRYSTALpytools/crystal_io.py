@@ -1600,7 +1600,7 @@ class Crystal_output:
         else:
             header = self.df[self.df[0].str.contains(r'^\s*FREQUENCY \(CM\*\*\-1\)    TOTAL NW\-PDOS')].index
         if len(header) == 0:
-            raise Exception('File does not have INS phonon DOS.')
+            raise Exception('File does not contain DOS/INS data.')
 
         empty_line = self.df[self.df[0].map(lambda x: x.strip() == '')].index.tolist()
         empty_line = np.array(empty_line, dtype=int)
