@@ -1599,8 +1599,8 @@ class Crystal_output:
             header = self.df[self.df[0].str.contains(r'^\s*FREQUENCY \(CM\*\*\-1\)    TOTAL PDOS')].index
         else:
             header = self.df[self.df[0].str.contains(r'^\s*FREQUENCY \(CM\*\*\-1\)    TOTAL NW\-PDOS')].index
-        if len(header) == 0:
-            raise Exception('File does not contain DOS/INS data.')
+            if len(header) == 0:
+                raise Exception('File does not have INS phonon DOS.')
 
         empty_line = self.df[self.df[0].map(lambda x: x.strip() == '')].index.tolist()
         empty_line = np.array(empty_line, dtype=int)
@@ -2850,7 +2850,7 @@ class Properties_output(POutBASE):
         Available methods are:
 
         * 'normal': Normal 1-file reading.  
-        * 'substact': Substracting data from the first entry based on following
+        * 'substract': Substracting data from the first entry based on following
             entries. Multiple entries or 1 entry with 'PATO' keyword enabled.
             For multiple entries, make sure the charge map is in the first (and
             ideally the only) 'MAPN' data block, otherwise the code won't get
@@ -2912,22 +2912,20 @@ class Properties_output(POutBASE):
                     index = np.where(headers>chg[0])[0][0]
             else:
                 if len(pato) == 1 and len(chg) == 2:
-                    if chg[0] < pato[0]: use_idx = 0 # density before pato
-                    else: use_idx = 1 # density after pato
-                    ipato = np.where(headers>pato[0])[0][0]
-                    ichg = np.where(headers>chg[use_idx])[0][0]
-                    if len(spin) != 0:
-                        ispin = np.where(headers>spin[use_idx][0][0])
-                        if method == 'substract': # pato substract
-                            index = np.array([ipato, ichg, ispin], dtype=int)
-                        else: # normal
-                            index = np.array([ichg, ispin], dtype=int)
-                    else:
-                        if method == 'substract': # pato substract
-                            index = np.array([ipato, ichg], dtype=int)
-                        else: # normal
-                            index = np.array([ichg], dtype=int)
-                    index = np.sort(index)
+                    if chg[0] < pato[0] and chg[1] > pato[0]: use_idx = 0
+                    else: use_idx = 1
+
+                    if method != 'substract': # Normal read of charge densities (No PATO)
+                        if len(spin) != 0:
+                            index = np.array([np.where(headers>chg[use_idx])[0][0],
+                                              np.where(headers>spin[use_idx])[0][0]], dtype=int)
+                            index = np.sort(index)
+                        else:
+                            index = np.where(headers>chg[0])[0][0]
+                    else: # spin dimension is not kept
+                        index = np.array([np.where(headers>chg[use_idx])[0][0],
+                                          np.where(headers>chg[1-use_idx])[0][0]], dtype=int)
+                        index = np.sort(index)
                 else:
                     warnings.warn('Multiple charge densities exist in the calculation. Only the first density map will be read.',
                                   stacklevel=2)
@@ -2937,24 +2935,9 @@ class Properties_output(POutBASE):
         spin, a, b, c, cosxy, struc, map, unit = CrgraParser.mapn(f25_files[0], index)
         # methods
         if len(f25_files) == 1 and len(pato) == 1 and method == 'substract': # PATO in the same file
-            if ichg < ipato:
-                if spin == 1:
-                    self.echg = ChargeDensity(map[0], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
-                    obj = ChargeDensity(map[1], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
-                    self.echg = self.echg.substract(obj)
-                else:
-                    self.echg = ChargeDensity(np.dstack([map[0], map[1]], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit))
-                    obj = ChargeDensity(map[1], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
-                    self.echg = self.echg.substract(obj)
-            else:
-                if spin == 1:
-                    self.echg = ChargeDensity(map[1], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
-                    obj = ChargeDensity(map[0], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
-                    self.echg = self.echg.substract(obj)
-                else:
-                    self.echg = ChargeDensity(np.dstack([map[1], map[2]], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit))
-                    obj = ChargeDensity(map[0], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
-                    self.echg = self.echg.substract(obj)
+            self.echg = ChargeDensity(map[use_idx], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
+            obj = ChargeDensity(map[1-use_idx], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
+            self.echg = self.echg.substract(obj)
             self.echg._set_unit('Angstrom')
             self.echg.data = self.echg.data[::-1] # base vector use BA rather than AB
         else: # others
@@ -2995,7 +2978,7 @@ class Properties_output(POutBASE):
 
         * 'normal': Normal reading, 1 or 2 entries for charge and spin
             densities.  
-        * 'substact': Substracting data from the first entry based on following
+        * 'substract': Substracting data from the first entry based on following
             entries.  
         * 'alpha_beta': Save spin-polarized data in :math:`\\alpha` /
             :math:`\\beta` states, rather than charge(:math:`\\alpha+\\beta`)
