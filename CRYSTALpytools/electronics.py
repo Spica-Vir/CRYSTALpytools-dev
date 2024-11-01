@@ -517,7 +517,7 @@ class FermiSurface():
             \*\*kwargs: Other keywords passed to the ``mlab.view()`` command to
                 adjust views. By default only ``distance='auto'`` is used.
         Returns:
-            fig (Scene): Mayavi Scene object.
+            None
         """
         import copy, warnings, re
         import numpy as np
@@ -590,9 +590,9 @@ class FermiSurface():
 
         # Fig scale, 1BZ might be very small for large systems.
         # Get a self-adaptative scaling factor. Applied only on plotted scenes
-        fig_scale = 1 / np.max([np.linalg.norm(self.rlatt[0]),
-                                np.linalg.norm(self.rlatt[1]),
-                                np.linalg.norm(self.rlatt[2])])
+        fig_scale = 2 / np.max([np.linalg.norm(self.rlattice[0]),
+                                np.linalg.norm(self.rlattice[1]),
+                                np.linalg.norm(self.rlattice[2])])
 
         # Band data
         fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
@@ -754,7 +754,7 @@ class FermiSurface():
             mview[k] = v
         mlab.view(**mview)
         mlab.show()
-        return fig
+        return
 
     def to_bxsf(self, filename, band_index=[]):
         """
