@@ -3003,7 +3003,7 @@ class Properties_output(POutBASE):
         if method == 'substract': method = 'subtract'# an old typo
         if method != 'subtract' and method != 'alpha_beta' and method != 'normal':
             raise ValueError("Unknown method: '{}'.".format(method))
-        if len(cubefiles) > 2 and method != 'sustract':
+        if len(cubefiles) > 2 and method != 'subtract':
             raise ValueError("Only 1 or 2 entries are permitted for method: '{}'.".format(method))
         if (method=='subtract' or method=='alpha_beta') and len(cubefiles) < 2:
             warings.warn("At least 2 files are needed for the specified method. Using 'normal' now.",
