@@ -724,6 +724,9 @@ class BOLTZTRAParaser():
         import numpy as np
 
         df = pd.DataFrame(open(filename))
+        # remove all the empty lines
+        df[0] = df[0].replace(r'^\s*\n', np.nan, regex=True)
+        df.dropna(inplace=True)
         spin = int(df[0][0].strip().split()[1]) + 1
         v = float(df[0][2].strip().split()[-1])
         if 'in W/m/K' in df[0][0]:
@@ -745,7 +748,7 @@ class BOLTZTRAParaser():
         if spin == 1 or type == 'SEEBECK': # no beta state
             t = df[0][titles[2:]].map(lambda x: x.strip().split()[3])
             t = t.to_numpy(dtype=float)
-            newtitle = [[titles + [len(df[0])]]]
+            newtitle = [titles + [len(df[0])]]
         else: # open shell
             betablock = df[df[0].str.contains('Beta')].index.tolist()[0]
             t = df[0][titles[2:int(len(titles)/2)]].map(lambda x: x.strip().split()[3])
@@ -754,7 +757,7 @@ class BOLTZTRAParaser():
             tmp = []; newtitle = []
             for i in titles:
                 if i < betablock or i > betablock:
-                   tmp.append(i)
+                    tmp.append(i)
                 else:
                     newtitle.append(tmp + [betablock])
                     tmp = [betablock]
@@ -765,7 +768,7 @@ class BOLTZTRAParaser():
 
         for ispin, titles_block in enumerate(newtitle):
             for nt in range(2, len(titles_block)-1):
-                block = df[0][titles[nt]+1:titles[nt+1]].map(lambda x: x.strip().split())
+                block = df[0].loc[titles_block[nt]+1:titles_block[nt+1]-1].map(lambda x: x.strip().split())
                 block = np.array(block.tolist(), dtype=float)
                 dc[ispin, nt-2, :] = block[:, 2] / v # N carrier to density
                 tensor[ispin, nt-2, :, :] = block[:, 3:]
