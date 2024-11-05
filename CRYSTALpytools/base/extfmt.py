@@ -737,16 +737,20 @@ class BOLTZTRAParaser():
         else:
             raise Exception('Unknown property. Check your input BOLTZTRA file.')
 
-        titles = df[df[0].str.contains('# ')].index
-        t = df[0][titles[2:]].map(lambda x: x.strip().split()[3])
-        t = t.to_numpy(dtype=float)
+        titles = df[df[0].str.contains('# ')].index.tolist()
         mu = df[0][titles[2]+1:titles[3]].map(lambda x: x.strip().split()[0])
         mu = mu.to_numpy(dtype=float)
         ncol = len(df[0][titles[2]+1].strip().split())
 
-        # open shell
-        if spin != 1 and type != 'SEEBECK':
-            betablock = df[df[0].str.contains('Beta')].index
+        if spin == 1 or type == 'SEEBECK': # no beta state
+            t = df[0][titles[2:]].map(lambda x: x.strip().split()[3])
+            t = t.to_numpy(dtype=float)
+            newtitle = [[titles + [len(df[0])]]]
+        else: # open shell
+            betablock = df[df[0].str.contains('Beta')].index.tolist()[0]
+            t = df[0][titles[2:int(len(titles)/2)]].map(lambda x: x.strip().split()[3])
+            t = t.to_numpy(dtype=float)
+
             tmp = []; newtitle = []
             for i in titles:
                 if i < betablock or i > betablock:
@@ -755,14 +759,12 @@ class BOLTZTRAParaser():
                     newtitle.append(tmp + [betablock])
                     tmp = [betablock]
             newtitle.append(tmp + [len(df[0])])
-        else:
-            newtitle = [titles.tolist() + [len(df[0])]]
 
         dc = np.zeros([spin, len(t), len(mu)], dtype=float)
         tensor = np.zeros([spin, len(t), len(mu), ncol-3], dtype=float)
 
-        for ispin, titles in enumerate(newtitle):
-            for nt in range(2, len(titles)-1):
+        for ispin, titles_block in enumerate(newtitle):
+            for nt in range(2, len(titles_block)-1):
                 block = df[0][titles[nt]+1:titles[nt+1]].map(lambda x: x.strip().split())
                 block = np.array(block.tolist(), dtype=float)
                 dc[ispin, nt-2, :] = block[:, 2] / v # N carrier to density
