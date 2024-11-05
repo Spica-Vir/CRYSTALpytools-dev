@@ -553,6 +553,9 @@ class DLVParser():
         import pandas as pd
 
         df = pd.DataFrame(open(filename))
+        # remove all the empty lines
+        df[0] = df[0].replace(r'^\s*\n', np.nan, regex=True)
+        df.dropna(inplace=True)
 
         iband = df[df[0].str.contains(r'^\s*Band\s+[0-9]+\s*$')].index.tolist()
         nband = 0
@@ -798,6 +801,9 @@ class BOLTZTRAParaser():
         import numpy as np
 
         df = pd.DataFrame(open(filename))
+        # remove all the empty lines
+        df[0] = df[0].replace(r'^\s*\n', np.nan, regex=True)
+        df.dropna(inplace=True)
         spin = int(df[0][0].strip().split()[1]) + 1
         if 'Transport distribution function' not in df[0][0]:
             raise ValueError('Not a TDF file.')
