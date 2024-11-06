@@ -39,7 +39,7 @@ def plot_ECHG(
         Otherwise plot charge densities.  
     * 'charge': Plot charge density.  
     * 'spin': Plot spin density.  
-    * 'diff': Substracting charge data from the first entry with the following
+    * 'diff': Subtracting charge data from the first entry with the following
         entries. Return to a non spin-polarized object.  
 
     Args:
@@ -113,9 +113,9 @@ def plot_ECHG(
         else:
             raise TypeError("Inputs must be either string or electronics.ChargeDensity objects.")
 
-    # substraction
+    # subtraction
     if 'diff' in option.lower():
-        obj[0].substract(*[i for i in obj[1:]])
+        obj[0].subtract(*[i for i in obj[1:]])
         option = 'charge'
         obj = [obj[0]]
     # set uniform levels
@@ -826,7 +826,7 @@ def plot_topond2D(*topond, unit='Angstrom', type='infer', option='normal',
     Available options:
 
     * 'normal' : Literally normal.  
-    * 'diff' : Substract data from the first entry using following entries. All
+    * 'diff' : Subtract data from the first entry using following entries. All
         the entries must have the same ``type`` and must be 'SURF*' types.  
     * 'overlay': Overlapping a 'TRAJ*' object on the 2D 'SURF*' object. Inputs
         must be 1\*2 lists of a ``Surf`` object and a ``Traj`` object. File
@@ -917,7 +917,7 @@ def plot_topond2D(*topond, unit='Angstrom', type='infer', option='normal',
         else:
             raise TypeError("Input type does not meet the requirements.")
 
-    # substraction
+    # subtraction
     if 'diff' in option.lower():
         if isinstance(obj[0], Trajectory):
             raise TypeError("The 'diff' option is not applicable to 'topond.Trajectory' objects.")
@@ -925,7 +925,7 @@ def plot_topond2D(*topond, unit='Angstrom', type='infer', option='normal',
             if isinstance(i, Trajectory): continue
             if obj[0].type != i.type:
                 raise TypeError("Different properties are read for input objects / files, 'diff' option not available.")
-            obj[0].substract(i)
+            obj[0].subtract(i)
         obj = [obj[0]]
 
     # set uniform levels

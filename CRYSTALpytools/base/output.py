@@ -235,7 +235,7 @@ class OptBASE():
         # opttitle: step 1 to final run
         # optend: initial SCF to last before final run
         if len(opttitle) == 0: raise Exception('Not an optimization output.')
-        if len(opttitle) == 1 and len(block_end) == 0: raise Exception('Initial SCF failed. Nothing to substract.')
+        if len(opttitle) == 1 and len(block_end) == 0: raise Exception('Initial SCF failed. Nothing to extract.')
         # terminated
         if len(block_end) == 0:
             warnings.warn('Job interrupted. Not a complete file.', stacklevel=3)
@@ -578,7 +578,7 @@ class PhononBASE():
 class POutBASE():
     """
     Base object for Properties output file. Auxiliary information is
-    substracted. Other data is read from formatted files respectively.
+    extracted. Other data is read from formatted files respectively.
 
     Args:
         filename (str): Properties output file name.

@@ -1103,7 +1103,7 @@ class ChargeDensity():
     def from_file(cls, *files, output=None, method='normal'):
         """
         Generate a ``ChargeDensity`` object from a single file, or from multiple
-        files by substracting values from the first entry. Can be used for
+        files by subtracting values from the first entry. Can be used for
         multiple dimensions (2D and 3D).
 
         .. note::
@@ -1116,7 +1116,7 @@ class ChargeDensity():
 
         * 'normal': Normal. For 2D fort.25 files, 1 entry. For 3D cube files,
             2 entries for charge and spin if needed.
-        * 'substact': Substracting data from the first entry based on following
+        * 'subtract': Subtracting data from the first entry based on following
             entries. Multiple entries only.  
         * 'alpha_beta': Save spin-polarized data in :math:`\\alpha` /
             :math:`\\beta` states, rather than charge(:math:`\\alpha+\\beta`)
@@ -1142,15 +1142,15 @@ class ChargeDensity():
             cls = Properties_output(output).read_ECH3(*files, method=method)
         return cls
 
-    def substract(self, *args):
+    def subtract(self, *args):
         """
-        Substracting data of the same type from the object.
+        Subtracting data of the same type from the object.
 
         Args:
             \*args (str|ChargeDensity): File names or ``ChargeDensity`` objects.
         Returns:
             self (ChargeDensity) : spin dimension, if there is, is not kept.
-                Only charge density difference is substracted.
+                Only charge density difference is subtracted.
         """
         from CRYSTALpytools.crystal_io import Properties_output
         import numpy as np
@@ -1175,7 +1175,7 @@ class ChargeDensity():
             # spin
             if self.spin != obj.spin:
                 raise ValueError('Inconsistent spin dimensionalities between input and object.')
-            # substract
+            # subtract
             self.data = self.data - obj.data
 
         # spin difference is not kept - meaningless. (if not please remove this block)
@@ -1191,6 +1191,10 @@ class ChargeDensity():
             self.data = np.reshape(self.data, nshape, order='F')
             self.spin = 1
         return self
+
+    def substract(self, *args):
+        """An old typo"""
+        return self.subtract(*args)
 
     def alpha_beta(self):
         """

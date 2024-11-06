@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Objects of input / output files of CRYSTAL. Methods to edit or substract data
+Objects of input / output files of CRYSTAL. Methods to edit or subtract data
 from corresponding files are provided.
 """
 from CRYSTALpytools import units
@@ -2850,11 +2850,11 @@ class Properties_output(POutBASE):
         Available methods are:
 
         * 'normal': Normal 1-file reading.  
-        * 'substract': Substracting data from the first entry based on following
+        * 'subtract': Subtracting data from the first entry based on following
             entries. Multiple entries or 1 entry with 'PATO' keyword enabled.
             For multiple entries, make sure the charge map is in the first (and
             ideally the only) 'MAPN' data block, otherwise the code won't get
-            the correct data. For 1 entry with 'PATO', data will be substracted
+            the correct data. For 1 entry with 'PATO', data will be subtracted
             from the 'normal' system.  
         * 'alpha_beta': Save spin-polarized data in :math:`\\alpha` /
             :math:`\\beta` states, rather than charge(:math:`\\alpha+\\beta`)
@@ -2883,7 +2883,8 @@ class Properties_output(POutBASE):
         import warnings
 
         method = method.lower()
-        if method != 'substract' and method != 'alpha_beta' and method != 'normal':
+        if method == 'substract': method = 'subtract'# an old typo
+        if method != 'subtract' and method != 'alpha_beta' and method != 'normal':
             raise ValueError("Unknown method: '{}'.".format(method))
 
         pato = [] # used for method check
@@ -2915,7 +2916,7 @@ class Properties_output(POutBASE):
                     if chg[0] < pato[0] and chg[1] > pato[0]: use_idx = 0
                     else: use_idx = 1
 
-                    if method != 'substract': # Normal read of charge densities (No PATO)
+                    if method != 'subtract': # Normal read of charge densities (No PATO)
                         if len(spin) != 0:
                             index = np.array([np.where(headers>chg[use_idx])[0][0],
                                               np.where(headers>spin[use_idx])[0][0]], dtype=int)
@@ -2934,10 +2935,10 @@ class Properties_output(POutBASE):
         # read file 0
         spin, a, b, c, cosxy, struc, map, unit = CrgraParser.mapn(f25_files[0], index)
         # methods
-        if len(f25_files) == 1 and len(pato) == 1 and method == 'substract': # PATO in the same file
+        if len(f25_files) == 1 and len(pato) == 1 and method == 'subtract': # PATO in the same file
             self.echg = ChargeDensity(map[use_idx], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
             obj = ChargeDensity(map[1-use_idx], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
-            self.echg = self.echg.substract(obj)
+            self.echg = self.echg.subtract(obj)
             self.echg._set_unit('Angstrom')
             self.echg.data = self.echg.data[::-1] # base vector use BA rather than AB
         else: # others
@@ -2957,11 +2958,11 @@ class Properties_output(POutBASE):
                     warnings.warn("Not a spin-polarized system, do nothing", stacklevel=2)
                 else:
                     self.echg.alpha_beta()
-            elif method == 'substract':
+            elif method == 'subtract':
                 if len(f25_files) > 1:
-                    self.echg = self.echg.substract(*[f for f in f25_files[1:]])
+                    self.echg = self.echg.subtract(*[f for f in f25_files[1:]])
                 else:
-                    warnings.warn("Nothing to substract.", stacklevel=2)
+                    warnings.warn("Nothing to subtract.", stacklevel=2)
 
         return self.echg
 
@@ -2978,7 +2979,7 @@ class Properties_output(POutBASE):
 
         * 'normal': Normal reading, 1 or 2 entries for charge and spin
             densities.  
-        * 'substract': Substracting data from the first entry based on following
+        * 'subtract': Subtracting data from the first entry based on following
             entries.  
         * 'alpha_beta': Save spin-polarized data in :math:`\\alpha` /
             :math:`\\beta` states, rather than charge(:math:`\\alpha+\\beta`)
@@ -2999,11 +3000,12 @@ class Properties_output(POutBASE):
         import warnings
 
         method = method.lower()
-        if method != 'substract' and method != 'alpha_beta' and method != 'normal':
+        if method == 'substract': method = 'subtract'# an old typo
+        if method != 'subtract' and method != 'alpha_beta' and method != 'normal':
             raise ValueError("Unknown method: '{}'.".format(method))
-        if len(cubefiles) > 2 and method != 'substract':
+        if len(cubefiles) > 2 and method != 'subtract':
             raise ValueError("Only 1 or 2 entries are permitted for method: '{}'.".format(method))
-        if (method=='substract' or method=='alpha_beta') and len(cubefiles) < 2:
+        if (method=='subtract' or method=='alpha_beta') and len(cubefiles) < 2:
             warings.warn("At least 2 files are needed for the specified method. Using 'normal' now.",
                          stacklevel=2)
         # The first entry
@@ -3032,13 +3034,13 @@ class Properties_output(POutBASE):
                 or np.linalg.norm(b-b1)>1e-4 or np.linalg.norm(c-c1)>1e-4 \
                 or np.linalg.norm(np.array(data1.shape)-np.array(data.shape))>1e-4:
                     raise Exception("Inconsistent data grid between the initial and the file: '{}'.".format(f))
-                if method == 'substract':
+                if method == 'subtract':
                     data -= data1
                 else:
                     if compare_struc(struc, struc1) == False:
                         raise Exception("Inconsistent structure between the initial and the file: '{}'.".format(f))
 
-        if method == 'substract':
+        if method == 'subtract':
             self.ech3 = ChargeDensity(np.expand_dims(data, axis=3),
                                       [origin, a, b, c], 1, 3, struc=struc, unit='a.u.')
             del data, data1
@@ -3489,7 +3491,7 @@ class Properties_output(POutBASE):
 
         warnings.warn("You are calling a deprecated function. Use 'read_ECHG' instead.",
                       stacklevel=2)
-        return self.read_ECHG(f25_file1, f25_file2, method='substract')
+        return self.read_ECHG(f25_file1, f25_file2, method='subtract')
 
     def read_cry_contour(self, properties_output):
         """
