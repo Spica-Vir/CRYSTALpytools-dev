@@ -525,13 +525,13 @@ class CStructure(Structure):
         self.platt = latt
         self.natom_irr = len(struc3.equivalent_sites)
         self.atom = []
-        natom_eq = int(struc3.num_sites / self.natom_irr)
-        for i in range(self.natom_irr):
-            idx_eq = int(i * natom_eq)
-            z = struc4.species[idx_eq].Z
-            self.atom.append([z, struc4.sites[idx_eq].a, struc4.sites[idx_eq].b,
-                             struc4.sites[idx_eq].c])
-
+        invlatt = np.linalg.inv(struc4.lattice.matrix)
+        for i in np.unique(np.array(struc3.site_labels, dtype=int)):
+            frac_in_struc4 = struc3.cart_coords[i] @ invlatt
+            self.atom.append([struc3.species[i].Z,
+                              frac_in_struc4[0],
+                              frac_in_struc4[1],
+                              frac_in_struc4[2]])
         return self
 
     def get_sg_symmops(self, **kwargs):
