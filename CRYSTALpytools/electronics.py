@@ -315,7 +315,7 @@ class FermiSurface():
         self.rlattice (array): Reciprocal lattice.
         self.dimension (int): 2 or 3
         self.spin (int): 1 or 2
-        self.bands (array): Bands
+        self.bands (array): Bands. Dimensionality same as input.
         self.efermi (float)
         self.BZ (list): Cartesian coordinates of vertices of 1BZ. Arranged in
             planes (i.e., the element of 4\*3 array represents a plane of 4 vertices).
@@ -661,9 +661,9 @@ class FermiSurface():
             kptnew = np.array(pband.shape, dtype=int)
 
             if self.dimension == 3: # 3D plot
-                fracx = np.linspace(1, -1, kptnew[0], endpoint=False)[::-1]
-                fracy = np.linspace(1, -1, kptnew[1], endpoint=False)[::-1]
-                fracz = np.linspace(1, -1, kptnew[2], endpoint=False)[::-1]
+                fracx = np.linspace(-1, 1, kptnew[0], endpoint=False)
+                fracy = np.linspace(-1, 1, kptnew[1], endpoint=False)
+                fracz = np.linspace(-1, 1, kptnew[2], endpoint=False)
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[0].reshape([1, 3])
                 carty = fracy.reshape([-1, 1]) @ self.rlattice[1].reshape([1, 3])
                 cartz = fracz.reshape([-1, 1]) @ self.rlattice[2].reshape([1, 3])
@@ -694,12 +694,13 @@ class FermiSurface():
                                          vmin=emin)
                 # Non-orthogonal grid
                 polydata = contour.actor.actors[0].mapper.input
-                pts = np.array(polydata.points)
-                pts = (pts+1) @ self.rlattice/np.array(kptnew/2) - self.rlattice[0] - self.rlattice[1] - self.rlattice[2]
+                pts = np.array(polydata.points) - 1
+                ## 3D plot is shifted by 1 set of lattice base vectors. Reason unclear.
+                pts = pts @ self.rlattice/np.array(kptnew/2) - self.rlattice[0] - self.rlattice[1] - self.rlattice[2]
                 polydata.points = pts * fig_scale
             else: # 2D plot
-                fracx = np.linspace(1, -1, kptnew[0], endpoint=False)[::-1]
-                fracy = np.linspace(1, -1, kptnew[1], endpoint=False)[::-1]
+                fracx = np.linspace(-1, 1, kptnew[0], endpoint=False)
+                fracy = np.linspace(-1, 1, kptnew[1], endpoint=False)
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[prdd[0]].reshape([1, 3])
                 carty = fracy.reshape([-1, 1]) @ self.rlattice[prdd[1]].reshape([1, 3])
                 mask = np.zeros_like(pband, dtype=bool)
@@ -726,8 +727,8 @@ class FermiSurface():
                                  warp_scale=1)# warp_scale not used. To suppress warnings.
                 # Non-orthogonal grid
                 polydata = surf.actor.actors[0].mapper.input
-                pts = np.array(polydata.points)
-                pts[:, prdd] = (pts[:, prdd]+1) @ self.rlattice[prdd, :][:, prdd]/np.array(kptnew/2)
+                pts = np.array(polydata.points) - 1
+                pts[:, prdd] = pts[:, prdd] @ self.rlattice[prdd, :][:, prdd]/np.array(kptnew/2)
                 pts[:, isod] = pts[:, isod] * zscale
                 polydata.points = pts * fig_scale
 

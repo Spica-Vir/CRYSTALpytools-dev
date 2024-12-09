@@ -591,7 +591,7 @@ class DLVParser():
                 aband = df[0].loc[bg:ed].map(lambda x: x.strip().split()).tolist()
                 band[i, :, :, :, j] = np.array(
                     [c for row in aband for c in row], dtype=float
-                ).reshape(npt[::-1], order='F')
+                ).reshape(npt[::-1], order='C')
         del aband
         # Redefine band in recepical cell rather than 1BZ
         # na: points along re-latt vector
@@ -600,7 +600,7 @@ class DLVParser():
         nc = int((band.shape[1]-1)/2+1)
         bandnew = np.zeros([nband, nc, nb, na, nspin])
         idx = np.where(band<9999)
-        bandnew[:, idx[1]%nc, idx[2]%nb, idx[3]%na, :] = band[:, idx[1], idx[2], idx[3], :]
+        bandnew[:, (idx[1]+1)%nc, (idx[2]+1)%nb, (idx[3]+1)%na, :] = band[:, idx[1], idx[2], idx[3], :]
         del band, idx
         return rlatt, bandnew, 'a.u.'
 

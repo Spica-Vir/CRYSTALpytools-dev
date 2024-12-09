@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Classes and methods to parse files used by `XCrySDen <http://www.xcrysden.org>`_.
+Developed for  XCrySDen <= 1.6.2, the latest version by 2024.
 """
 class XSF():
     """
@@ -313,7 +314,7 @@ class BXSF():
     Args:
         relattice (array|CStructure): Reciprocal lattice matrix or structure
             object.
-        bands (array): nBand\*nX\*nY\*nZ\*nSpin array. Unit: eV. Aligned to
+        bands (array): nBand\*nZ\*nY\*nX\*nSpin array. Unit: eV. Aligned to
             :math:`E_{F}=0`.
         efermi (float): Fermi energy. Unit: eV.
         band_index (list|str|int): Indices of bands. Starting from 1. For spin-
@@ -336,23 +337,32 @@ class BXSF():
         self.efermi = efermi
 
         bands = np.array(bands, dtype=float)
+        pdirs = np.where(np.array(bands.shape[1:-1])>1)[0]
         if bands.ndim != 5:
-            raise ValueError("Input band must be in the shape of nBand*nX*nY*nZ*nSpin.")
+            raise ValueError("Input band must be in the shape of nBand*nZ*nY*nX*nSpin.")
+        if len(pdirs) != 3:
+            raise Exception('BXSF format only applies to 3D structures. Read XCrySDen manual.')
 
+        # Band index
         if len(band_index) == 0:
             band_index = [i+1 for i in range(bands.shape[0])]
         iband, ispin = FermiSurface._get_band_index(bands, band_index)
 
-        self.bands = np.zeros([len(iband), bands.shape[1], bands.shape[2], bands.shape[3]])
+        # XCrySDen defines a general mesh rather than a periodic one
+        self.bands = np.zeros([len(iband), bands.shape[1]+1, bands.shape[2]+1, bands.shape[3]+1])
         self.band_labels = np.zeros_like(np.zeros([len(iband),]), dtype=str)
         for i in range(len(iband)):
-            self.bands[i] = bands[iband[i], :, :, :, ispin[i]]
+            self.bands[i, :-1, :-1, :-1] = bands[iband[i], :, :, :, ispin[i]]
             self.band_labels[i] = '{:d}0{:d}'.format(iband[i]+1, ispin[i]+1)
+            self.bands[i, -1, :, :] = self.bands[i, 0, :, :]
+            self.bands[i, :, -1, :] = self.bands[i, :, 0, :]
+            self.bands[i, :, :, -1] = self.bands[i, :, :, 0]
         self.bands = self.bands + self.efermi
 
     def write(self, filename, grid_name='UNKNOWN'):
         """
-        Write Fermi surface data into a new XSF file. Band labels:
+        Write Fermi surface data into a new XSF file. Band label is a string,
+        with indices:
 
         * \[0\:-2\]: Band index strating from 1;  
         * -2: Useless, 0;  
