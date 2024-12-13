@@ -428,7 +428,8 @@ class FermiSurface():
         for ispin in range(self.spin):
             nvb = -1; ncb = -1
             for nbd, bd in enumerate(self.bands[:, :, :, :, ispin]):
-                if np.all(bd>0):
+                bd = np.round(bd, 4) # lower the accuracy
+                if np.all(bd>=0):
                     nvb = nbd - 1; ncb = nbd; break
                 else:
                     continue
@@ -437,9 +438,9 @@ class FermiSurface():
             fvbm = self.bands[nvb, :, :, :, ispin].flatten()
             fcbm = self.bands[ncb, :, :, :, ispin].flatten()
             ivbm = np.argmax(fvbm)
-            icbm = np.argmax(fcbm)
-            vbm = np.round(fvbm[ivbm], 6)
-            cbm = np.round(fcbm[icbm], 6)
+            icbm = np.argmin(fcbm)
+            vbm = np.round(fvbm[ivbm], 4)
+            cbm = np.round(fcbm[icbm], 4)
 
             izv = int(ivbm // (ny*nx))
             iyv = int((ivbm - izv*ny*nx) // nx)
@@ -451,8 +452,8 @@ class FermiSurface():
             ixc = int(icbm - izc*ny*nx - iyc*nx)
             kcbm = np.array([fx[ixc], fy[iyc], fz[izc]]) @ self.rlattice
 
-            if vbm > 0. or cbm < 0.: gap = 0.
-            else: gap = cbm - vbm
+            gap = np.round(cbm-vbm, 4)
+            if gap < 0: gap = 0.
             self.gap[ispin] = gap
             self.vbm[ispin] = vbm
             self.cbm[ispin] = cbm
@@ -465,10 +466,12 @@ class FermiSurface():
             self.gap_pos = self.gap_pos[0]
         return self.gap, self.vbm, self.cbm, self.gap_pos
 
-    def plot(self, band_index='vb', isovalue=0., interp='no interp',
-             interp_size=1, colormap='jet', opacity=1.0, transparent=False,
-             BZ_plot=True, BZ_scale=1.0, BZ_color=(0., 0., 0.),
-             BZ_linewidth=1.0, tick_pos=[], tick_label=[], **kwargs):
+    def plot(self,
+             band_index='vb', isovalue=0., volume_3d=False,
+             interp='no interp', interp_size=1,
+             colormap='jet', opacity=1.0, transparent=False,
+             BZ_plot=True, BZ_scale=1.0, BZ_color=(0., 0., 0.), BZ_linewidth=1.0,
+             tick_pos=[], tick_label=[], fig=None, **kwargs):
         """
         Plot :math:`E(k)` in the first brillouin zone (1BZ).
 
@@ -477,17 +480,29 @@ class FermiSurface():
             `MayaVi <https://docs.enthought.com/mayavi/mayavi/>`_ is used to
             display :math:`E(k)`, which is not installed by default.
 
-        * For 3D systems, it is displayed as isosurfaces of :math:`E(k)`.  
+        * For 3D systems, it is displayed as isosurfaces of :math:`E(k)`, or
+            its distributions if ``volume_3d=True``.  
         * For 2D systems, the distribution is displayed, so ``isovalue`` is
             disabled.
 
-        For 3D systems, displaying multiple bands is discouraged. But the user
-        can still visualize the isosurfaces of multiple bands and the same
-        ``isovalue`` and ``colormap`` applies to all the bands.
+        For 3D systems, displaying multiple bands at multiple isovalues is
+        discouraged. But the user can still visualize the isosurfaces of
+        multiple bands and the same ``isovalue`` and ``colormap`` applies to
+        all the bands. A barchart is plotted by matplotlib to indicate band
+        energy ranges and isovalues.
+
+        If ``volume_3d=True``, only 1 band is allowed. ``isovalue`` is ignored.
+        The grid in reciprocal lattice should be, ideally, orthogonal and
+        aligned to X Y and Z axes. If not, the grid is linearly interpolated by
+        the `scipy.interpolate.griddata() <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_
+        method. More details are available in the :ref:`base.plotbase.tvtkGrid() <ref-tvtkGrid>`
+        function. The interpolated grid has the same size as specified by
+        ``interp_size``.
 
         .. note ::
 
             Too large ``interp_size`` might be very memory and cpu demanding!
+            Similarly, ``volume_3d=True`` might be very demanding in some cases!
 
         Args:
             band_index (list|str|int): Indices of bands to plot. Starting from
@@ -495,6 +510,8 @@ class FermiSurface():
                 :math:`\\alpha` state of band 4. Use 'vb' and 'cb' to display
                 the highest valance or the lowest conduction band.
             isovalue (float|list): *3D system only* Isovalue of surfaces.
+            volume_3d (bool): *3D system only* Plot 3D volume data rather than
+                isosurfaces. Only 1 band is permitted.
             interp (str): Interpolate data to smoothen the plot. 'no interp' or
                 'linear', 'nearest', 'slinear', 'cubic'. please refer to
                 `scipy.interpolate.interpn <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.interpn.html>`_
@@ -503,7 +520,12 @@ class FermiSurface():
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
             colormap (str): `Mayavi colormap <https://docs.enthought.com/mayavi/mayavi/mlab_changing_object_looks.html>`_.
+                Not available for ``volume_3d=rue`` due to the requirements of
+                MayaVi.
             opacity (float): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
+                Range must be 0 to 1. For ``volume_3d=True``, that defines the
+                opacity of the maximum value. The opacity of the minimum is
+                half of it.
             transparent (bool): See `Mayavi mlab <https://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html>`_.
             BZ_plot (bool): Whether to plot the boundary of 1BZ.
             BZ_scale (float): *Must be between 1 and 2*. Do not truncate data grid
@@ -514,6 +536,8 @@ class FermiSurface():
             BZ_linewidth (float): Linewidth of the 1BZ plot.
             tick_pos (array): *Not implemented*
             tick_label (list): *Not implemented*
+            fig (None|Figure): *Developers* Accept and return to MayaVi figure
+                class instead of showing it in the rendering window.
             \*\*kwargs: Other keywords passed to the ``mlab.view()`` command to
                 adjust views. By default only ``distance='auto'`` is used.
         Returns:
@@ -521,8 +545,16 @@ class FermiSurface():
         """
         import copy, warnings, re
         import numpy as np
-        from mayavi import mlab
-        from scipy.interpolate import interpn # , LinearNDInterpolator
+        from scipy.interpolate import interpn
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as mcolors
+        from matplotlib.patches import Rectangle
+        try:
+            from mayavi import mlab
+            from tvtk.util.ctf import PiecewiseFunction
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+        from CRYSTALpytools.base.plotbase import tvtkGrid
 
         #---------------------------------------------------------------------#
         #                                NOTE                                 #
@@ -534,11 +566,15 @@ class FermiSurface():
         # Input processing and sanity check
         k_points = np.array([self.bands.shape[3], self.bands.shape[2], self.bands.shape[1]], dtype=int)
         iband, ispin = FermiSurface._get_band_index(self.bands, band_index)
+        spin_label = {0 : 'alpha', 1 : 'beta'}
 
         isovalue = np.array(isovalue, dtype=float, ndmin=1)
-        if self.dimension == 3 and len(iband) > 1:
-            warnings.warn('For 3D systems, the user is strongly recommended to plot only 1 band every time.',
-                          stacklevel=2)
+        if self.dimension == 3 and volume_3d == False:
+            if len(iband) > 1 and len(isovalue) > 1:
+                    warnings.warn('For 3D systems, the user is strongly recommended to plot only 1 band or 1 isovalue every time. The same isovalue is applied to all the bands.',
+                                  stacklevel=2)
+        if self.dimension == 3 and volume_3d == True:
+            if len(iband) > 1: raise Exception("Only 1 band is permitted when 'volume_3d=True'.")
 
         # Define and scale 1BZ
         k_path = self.BZ
@@ -556,23 +592,43 @@ class FermiSurface():
             verteices[ik] = k[0]
 
         # Energy scale
-        emax = np.max(self.bands[iband, :, :, :, ispin])
-        emin = np.min(self.bands[iband, :, :, :, ispin])
-        if self.dimension == 3: # Check isovalues for 3D
-            if np.any(isovalue<=emin):
-                raise ValueError("At least 1 isovalue is less or equal to the minimum ({:.4f}) of the plotting data".format(emin))
-            if np.any(isovalue>=emax):
-                raise ValueError("At least 1 isovalue is greater or equal to the maximum ({:.4f}) of the plotting data".format(emax))
-        else: # Scale Z axis for 2D, same length as the longer one of x and y
+        emax = []; emin = []
+        for ibd, isp in zip(iband, ispin):
+            emax.append(np.max(self.bands[ibd, :, :, :, isp]))
+            emin.append(np.min(self.bands[ibd, :, :, :, isp]))
+        allmax = np.max(emax); allmin = np.min(emin)
+        ## Add bar chart for 3D isosurfaces
+        if self.dimension == 3 and volume_3d == False:
+            barfig, barax = plt.subplots(1, 1, layout='tight', figsize=[6, 4.5])
+            clist = list(mcolors.TABLEAU_COLORS.keys())
+            barpos = np.array([i*2+1 for i in range(len(iband))])
+            barlab = []
+            for i in range(len(iband)):
+                rect = Rectangle((barpos[i], emin[i]), 1, emax[i]-emin[i], color=clist[i%10])
+                barax.add_patch(rect)
+                barax.text(barpos[i]+0.5, emax[i], '{:.2f}'.format(emax[i]),
+                           horizontalalignment='center', verticalalignment='bottom')
+                barax.text(barpos[i]+0.5, emin[i], '{:.2f}'.format(emin[i]),
+                           horizontalalignment='center', verticalalignment='top')
+                barlab.append('Band {:d}\nSpin $\{}$'.format(iband[i]+1, spin_label[ispin[i]]))
+            barax.hlines(isovalue, 0, barpos[-1]+2, colors='tab:gray', linestyles='dotted')
+            barax.set_xticks(barpos+0.5, labels=barlab)
+            barax.set_xlim([0, barpos[-1]+2])
+            barax.set_yticks(isovalue)
+            barax.set_ylabel(r'$E_{iso}-E_{F}$ (eV)')
+            plt.show()
+
+        # 2D, Scale Z axis for 2D, same length as the longer one of x and y
+        if self.dimension == 2:
             xrange = np.max(verteices[:, 0])-np.min(verteices[:, 0])
             yrange = np.max(verteices[:, 1])-np.min(verteices[:, 1])
-            zscale = np.max([xrange, yrange]) / (emax - emin)
-
-        # 2 indices used by 2D systems
+            zscale = np.max([xrange, yrange]) / (allmax - allmin)
+        # 2D, indices of periodic and non-periodic dirs
         prdd = np.where(k_points>1)[0]
-        isod = np.where(k_points==1)
+        isod = np.where(k_points==1)[0]
         if len(isod) == 1: isod = isod[0]
-        else: isod = -1
+        elif len(isod) == 0: isod = -1
+        else: raise Exception("A 2D/3D k mesh must defined. Now only 1 k point is defined along {:d} dimensions.".format(len(isod)))
 
         # Interpolation
         if interp.lower() not in ['no interp', 'linear', 'nearest', 'slinear', 'cubic']:
@@ -593,12 +649,27 @@ class FermiSurface():
         fig_scale = 2 / np.max([np.linalg.norm(self.rlattice[0]),
                                 np.linalg.norm(self.rlattice[1]),
                                 np.linalg.norm(self.rlattice[2])])
+        # Figure
+        if np.all(fig==None):
+            fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
+            returnfig = False
+        elif isinstance(fig, str):
+            fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
+            returnfig = True
+        else:
+            returnfig = True
 
         # Band data
-        fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
-        for ibd, isp in zip(iband, ispin):
+        for ibd, isp, vmx, vmi in zip(iband, ispin, emax, emin):
+            # Range of isovalues
+            if volume_3d == False and self.dimension == 3:
+                isoplot = isovalue[np.where((isovalue>vmi)&(isovalue<vmx))[0]]
+                if isoplot.shape[0] == 0:
+                    warnings.warn("Band {:d}, spin {}: No isovalue lies in the energy range.".format(ibd+1, spin_label[isp]),
+                                  stacklevel=2)
+                    continue
             # Interpolate band
-            if interp != 'no inter':
+            if interp != 'no interp':
                 if self.dimension == 3:
                     newgrid = np.meshgrid(
                         np.linspace(0, 1, interp_size[0]),
@@ -667,9 +738,10 @@ class FermiSurface():
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[0].reshape([1, 3])
                 carty = fracy.reshape([-1, 1]) @ self.rlattice[1].reshape([1, 3])
                 cartz = fracz.reshape([-1, 1]) @ self.rlattice[2].reshape([1, 3])
-                # Currently 3D volume plot do not display nan values properly.
-                # if volume_3d == True:
-                #     interplator = LinearNDInterpolator(GRID, intband.flatten(), rescale=False)
+
+                if volume_3d == False: nullvalue = np.nan
+                else: nullvalue = allmin-1.
+
                 for i in range(kptnew[0]):
                     x = cartx[i]
                     for j in range(kptnew[1]):
@@ -682,22 +754,46 @@ class FermiSurface():
                                 np.dot(v[l], norms[l]) * dists[l] for l in range(nedge)
                             ])
                             if np.all(dist>-1e-4): continue
-                            pband[i, j, k] = np.nan
+                            pband[i, j, k] = nullvalue
                 # Plot isosurface
-                contour = mlab.contour3d(pband,
-                                         figure=fig,
-                                         contours=isovalue.tolist(),
-                                         colormap=colormap,
-                                         opacity=opacity,
-                                         transparent=transparent,
-                                         vmax=emax,
-                                         vmin=emin)
-                # Non-orthogonal grid
-                polydata = contour.actor.actors[0].mapper.input
-                pts = np.array(polydata.points) - 1
-                ## 3D plot is shifted by 1 set of lattice base vectors. Reason unclear.
-                pts = pts @ self.rlattice/np.array(kptnew/2) - self.rlattice[0] - self.rlattice[1] - self.rlattice[2]
-                polydata.points = pts * fig_scale
+                if volume_3d == False:
+                    grid = tvtkGrid([[0., 0., 0.],
+                                     self.rlattice[0]*2*fig_scale, # pband defined on 2x2x2 grid
+                                     self.rlattice[1]*2*fig_scale,
+                                     self.rlattice[2]*2*fig_scale],
+                                    np.transpose(pband, axes=[2,1,0]),
+                                    CenterOrigin=True,
+                                    IntrpGrid=False)
+                    contour = mlab.pipeline.iso_surface(grid,
+                                                        figure=fig,
+                                                        contours=isoplot.tolist(),
+                                                        colormap=colormap,
+                                                        opacity=opacity,
+                                                        transparent=transparent,
+                                                        vmax=allmax,
+                                                        vmin=allmin)
+                # Plot volume
+                else:
+                    grid = tvtkGrid([[0., 0., 0.],
+                                     self.rlattice[0]*2*fig_scale, # pband defined on 2x2x2 grid
+                                     self.rlattice[1]*2*fig_scale,
+                                     self.rlattice[2]*2*fig_scale],
+                                    np.transpose(pband, axes=[2,1,0]),
+                                    CenterOrigin=True,
+                                    IntrpGrid=True,
+                                    fill_value=nullvalue)
+                    vol = mlab.pipeline.volume(grid,
+                                               figure=fig,
+                                               vmax=allmax,
+                                               vmin=allmin)
+                    # transparency
+                    otf = PiecewiseFunction()
+                    otf.add_point(nullvalue, 0.)
+                    for i, o in zip(np.linspace(allmin, allmax, 10),
+                                    np.linspace(opacity*0.5, opacity, 10)):
+                        otf.add_point(i, o)
+                    vol._otf = otf
+                    vol._volume_property.set_scalar_opacity(otf)
             else: # 2D plot
                 fracx = np.linspace(-1, 1, kptnew[0], endpoint=False)
                 fracy = np.linspace(-1, 1, kptnew[1], endpoint=False)
@@ -722,13 +818,13 @@ class FermiSurface():
                                  colormap=colormap,
                                  opacity=opacity,
                                  transparent=transparent,
-                                 vmax=emax,
-                                 vmin=emin,
+                                 vmax=allmax,
+                                 vmin=allmin,
                                  warp_scale=1)# warp_scale not used. To suppress warnings.
                 # Non-orthogonal grid
                 polydata = surf.actor.actors[0].mapper.input
-                pts = np.array(polydata.points) - 1
-                pts[:, prdd] = pts[:, prdd] @ self.rlattice[prdd, :][:, prdd]/np.array(kptnew/2)
+                pts = np.array(polydata.points)
+                pts[:, prdd] = (pts[:, prdd]-1) @ self.rlattice[prdd, :][:, prdd]/np.array(kptnew/2)
                 pts[:, isod] = pts[:, isod] * zscale
                 polydata.points = pts * fig_scale
 
@@ -753,9 +849,10 @@ class FermiSurface():
         mview = {'distance' : 'auto', 'figure' : fig}
         for k, v in zip(kwargs.keys(), kwargs.values()):
             mview[k] = v
+
         mlab.view(**mview)
-        mlab.show()
-        return
+        if returnfig == True: return fig
+        else: mlab.show(); return
 
     def to_bxsf(self, filename, band_index=[]):
         """
@@ -877,7 +974,7 @@ class FermiSurface():
                     attrv = getattr(self, p)
                     setattr(self, p, H_to_eV(attrv))
             # reciprocal
-            self.BZ = angstrom_to_au(self.BZ)
+            self.BZ = [angstrom_to_au(i) for i in self.BZ]
             self.rlattice = angstrom_to_au(self.rlattice)
             for p in opt_d_props:
                 if hasattr(self, p):
@@ -892,7 +989,7 @@ class FermiSurface():
                     attrv = getattr(self, p)
                     setattr(self, p, eV_to_H(attrv))
             # reciprocal
-            self.BZ = au_to_angstrom(self.BZ)
+            self.BZ = [au_to_angstrom(i) for i in self.BZ]
             self.rlattice = au_to_angstrom(self.rlattice)
             for p in opt_d_props:
                 if hasattr(self, p):
