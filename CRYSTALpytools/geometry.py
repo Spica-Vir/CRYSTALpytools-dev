@@ -764,6 +764,8 @@ class CStructure(Structure):
 
     def get_bonds(self, scale=1.2, special_bonds={}):
         """
+        .. _ref-CStrucGetBonds:
+
         Get bond connectivity based on distances between atoms.
 
         Args:
@@ -885,9 +887,11 @@ class CStructure(Structure):
                   atom_color='cpk',
                   atom_data=[],
                   atom_null=(0., 0., 0.),
+                  atom_cbar_label='Atom Data',
                   bond_color=(0.5, 0.5, 0.5),
                   bond_data=[],
                   bond_null=(0., 0., 0.),
+                  bond_cbar_label='Bond Data',
                   atom_bond_ratio='medium',
                   cell_display=True,
                   cell_color=(0., 0., 0.),
@@ -895,6 +899,7 @@ class CStructure(Structure):
                   display_matrix=[[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
                   display_origin=[0., 0., 0.],
                   display_range=[[0., 1.], [0., 1.], [0., 1.]],
+                  show_the_scene=True,
                   **kwargs):
         """
         Visualize 3D atomic structure with `MayaVi <https://docs.enthought.com/mayavi/mayavi/>`_
@@ -915,6 +920,13 @@ class CStructure(Structure):
         is defined by ``display_origin``. :math:`\\mathbf{L_{0}}` is the input
         structure. The object itself will not be changed.
 
+        **A known issue**
+
+        Due to settings of MayaVi, bonds plotted in bond data display mode are
+        plotted as lines rather than tubes. That might make bonds look very
+        thick in the default rendering window, which can be addressed by
+        zooming in or expand the rendering window.
+
         Args:
             atom_color (str): Color map of atoms. 'jmol' or 'cpk' for normal
                 display (by elements). Or MayaVi colormaps for data display.
@@ -923,6 +935,7 @@ class CStructure(Structure):
                 are plotted in the color specified by ``atom_null``.
             atom_null (turple): *Useful only for data-display mode*. Color of
                 atoms without data assigned.
+            atom_cbar_label (str): Title of atom data colorbar.
             bond_color (turple|str): Color of bonds for normal display or
                 MayaVi colormaps for data display.
             bond_data (array): nBond\*3 array. The first 2 columns are atom
@@ -930,6 +943,7 @@ class CStructure(Structure):
                 data.
             bond_null (turple): *Useful only for data-display mode*. Color of
                 bonds without data assigned.
+            bond_cbar_label (str): Title of bond data colorbar.
             atom_bond_ratio (str): 'balls', 'large', 'medium', 'small' or
                 'sticks'. The relative sizes of balls and sticks.
             cell_display (bool): Display lattice boundaries (at \[0., 0., 0.\] only).
@@ -944,8 +958,21 @@ class CStructure(Structure):
                 Fractional coordinates a, b, c are used but only the periodic
                 directions are applied. Defined according to the **expanded
                 and translated supercell**.
-            **kwargs: Input keywords from the ``self.get_bonds()`` method are
-                accepted. Or keywords passed to the ``mlab.view()`` command.
+            show_the_scene (bool): Display the scene by ``mlab.show()`` and
+                return None. Otherwise return the scene object.
+            \*\*kwargs: Other keywords passed to MayaVi or ``self.get_bonds()``.
+                See below.
+            scale (float): Scale the sum of atomic radius A and radius B.
+            special_bonds(dict): Dictionary of bond lengths that are not
+                compliant to ``scale``. Should be defined as ``{'A:B' : len}``,
+                with ``A`` ``B`` being element symbols and ``len`` being bond
+                length in :math:`\\AA`. The sequence of ``A`` ``B`` is arbitrary.
+            azimuth: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            elevation: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            distance: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+                By default set to 'auto'.
+            focalpoint: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            roll: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
         Returns:
             None
         """
@@ -989,13 +1016,11 @@ class CStructure(Structure):
         atscale = scale_factors[atom_bond_ratio.lower()]
 
         # Bond connectivity
-        bondkwd = ['scale', 'special_bonds']; newkwd = {}
-        for k in list(kwargs.keys()):
-            if k.lower() in bondkwd:
-                newkwd[k.lower()] = kwargs[k]
-                del kwargs[k]
-        self.get_bonds(**newkwd)
+        bondkwd = ['scale', 'special_bonds']; newkwd = dict()
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in bondkwd: newkwd[k] = v
 
+        self.get_bonds(**newkwd)
         # Supercell
         ndimen = self.pbc.count(True)
         smx = np.eye(3, dtype=int)
@@ -1247,35 +1272,29 @@ class CStructure(Structure):
 
         ## Add color bar
         if at_data == True:
-            mlab.colorbar(object=pts, orientation='horizontal', title='Atom Data', label_fmt='%.2f')
+            mlab.colorbar(object=pts, orientation='horizontal', title=atom_cbar_label, label_fmt='%.2f')
         if bd_data == True:
-            mlab.colorbar(object=bds, orientation='vertical', title='Bond Data', label_fmt='%.2f')
+            mlab.colorbar(object=bds, orientation='vertical', title=bond_cbar_label, label_fmt='%.2f')
 
         ## Final setups
-        mview = {'distance' : 'auto', 'figure' : fig}
-        for k, v in zip(list(kwargs.keys()), list(kwargs.values())):
-            mview[k] = v
-        mlab.view(**mview)
-        mlab.gcf().scene.parallel_projection = True
-        mlab.show()
-        return
+        keys = ['azimuth', 'elevation', 'distance', 'focalpoint', 'roll']
+        keywords = dict(figure=fig, distance='auto')
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+        mlab.view(**keywords)
+
+        if show_the_scene == False:
+            return fig
+        else:
+            mlab.gcf().scene.parallel_projection = True
+            mlab.show()
+            return
 
 
 class CMolecule(Molecule):
-    """
-    Inherited from `Pymatgen Molecule <https://pymatgen.org/pymatgen.core.html#pymatgen.core.structure.Molecule>`_
-    object with added methods.
-
-    Args:
-        species (list[int]): Same as pymatgen or a 1\*nAtom list of
-            **conventional** atomic numbers.
-        symmetry_group (int): Symmetry group number or symbol in CRYSTAL
-            convention.
-        \*\*kwargs: Other arguments passed to pymatgen Molecule.
-    Returns:
-        self (CMolecule): ``CMolecule`` object.
-    """
+    """Deprecated, use CStructure"""
     def __init__(species, coords, symmetry_group=1, **kwargs):
+        import warnings
         import numpy as np
 
         if isinstance(species[0], int) or isinstance(species[0], float) \
@@ -1286,6 +1305,9 @@ class CMolecule(Molecule):
         self = Molecule(species=species, coords=coords, **kwargs)
         self._symmetry_group = symmetry_group
         self._species_Z = zconv
+
+        warnings.warn("This is a deprecated method and returns to a pymatgen Molecule class only. Use CStructure with pbc=(False, False, False) instead.",
+                      stacklevel=2)
 
 
 
