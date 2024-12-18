@@ -683,6 +683,9 @@ def plot_banddos(bands, doss, k_label, beta, overlap, prj, energy_range, k_range
     return fig
 
 
+#--------------------------- 2D fields based on Matplotlib -------------------#
+
+
 def plot_2Dscalar(fig, ax, data, base, levels, contourline, isovalue, colormap, cbar_label,
                   a_range, b_range, rectangle, edgeplot, xticks, yticks, **kwargs):
     """
@@ -1060,10 +1063,94 @@ def _get_operation(base):
     return rot, disp
 
 
+#---------------------------- grid general manipulation ----------------------#
+
+
+def GridInterpolate(base, data, method, size):
+    """
+    Interpolate 2D/ 3D grid data by `scipy.interpolate.interpn <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.interpn.html>`_.
+
+    Args:
+        base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
+            base vectors BA, BC (2D) or OA, OB, OC (3D). The sequence is (O),
+            A, B, C.
+        data (array): nX\*nY(\*nZ) data grid.
+        method (str): 'linear', 'nearest', 'slinear', 'cubic'.
+        size (int): The new size of interpolated data (list) or a scaling factor.
+    Returns:
+        DATA (array): nX\*nY(\*nZ) data grid.
+        CRDS (array): (nX\*nY\*nZ)\*3 or (nX\*nY)\*2 cartesian coordinates.
+            Sequence is consistent with the flattened ``DATA``.
+    """
+    import numpy as np
+    from scipy.interpolate import griddata, interpn
+
+    data = np.array(data, dtype=float)
+    base = np.array(base, dtype=float)
+    if data.ndim == 3:
+        if base.shape[0] != 4 or base.shape[1] != 3:
+            raise ValueError('4*3 array of point O, A, B, C must be defined.')
+    elif data.ndim == 2:
+        if base.shape[0] != 3 or base.shape[1] != 3:
+            raise ValueError('3*3 array of point A, B, C must be defined.')
+    else:
+        raise ValueError('Only for 3D or 2D scalar fields.')
+
+    # method
+    method = method.lower()
+    if method not in ['linear', 'nearest', 'slinear', 'cubic']:
+        raise ValueError("Unknown interpolation method: {}.".format(method))
+
+    # size
+    size = np.array(size, ndmin=1, dtype=int)
+    if len(size) == 1:
+        size = size.repeat(data.ndim)
+    if len(size) != data.ndim:
+        raise ValueError("Specified dimension of interpolation = {:d}. The system dimension = {:d}.".format(len(size), data.ndim))
+    if np.all(size<1):
+        raise ValueError("'size' must have values larger than or equal to 1.")
+
+    bvec = np.array([base[i]-base[0] for i in range(1,data.ndim+1)])
+    newgrid = [size[i]*data.shape[i] for i in range(data.ndim)]
+    if data.ndim == 3:
+        CRDS = np.meshgrid(np.linspace(0, 1, newgrid[0]),
+                           np.linspace(0, 1, newgrid[1]),
+                           np.linspace(0, 1, newgrid[2]),
+                           indexing='ij')
+        CRDS = np.array([i.flatten() for i in CRDS]).T
+        DATA = interpn(
+            (np.linspace(0, 1, data.shape[0]),
+             np.linspace(0, 1, data.shape[1]),
+             np.linspace(0, 1, data.shape[2])),
+            data,
+            CRDS,
+            method=method
+        )
+        CRDS = CRDS @ bvec
+        DATA = DATA.reshape(newgrid)
+        del data
+    else:
+        CRDS = np.meshgrid(np.linspace(0, 1, newgrid[0]),
+                           np.linspace(0, 1, newgrid[1]),
+                           indexing='ij')
+        CRDS = np.array([i.flatten() for i in CRDS]).T
+        DATA = interpn(
+            (np.linspace(0, 1, data.shape[0]),
+             np.linspace(0, 1, data.shape[1])),
+            data,
+            CRDS,
+            method=method
+        )
+        CRDS = CRDS @ bvec
+        DATA = DATA.reshape(newgrid)
+        del data
+    return DATA, CRDS
+
 
 #------------------------------ 3D plots based on MayaVi----------------------#
 
-def tvtkGrid(base, data, CenterOrigin=False, IntrpGrid=False, **kwargs):
+
+def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
     """
     .. _ref-tvtkGrid:
 
@@ -1085,12 +1172,13 @@ def tvtkGrid(base, data, CenterOrigin=False, IntrpGrid=False, **kwargs):
 
     Args:
         base (array): Base vectors, 4\*3 array of origin and point A, B, C
-        data (array): Scalar field data in row-major order, i.e., nC\*nB\*nA.
+        data (array): Scalar field data in column-major order, i.e., nA\*nB\*nC.
         CenterOrigin (bool): Put origin of base vectors in the center. Usually
             for reciprocal space visualization.
-        InterpGrid (bool): Interpolate non-orthogonal data into orthogonal grid.
-            For volume data representation.
-        **kwargs: Passed to `scipy.interpolate.griddata <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_.
+        InterpGridSize (array|int|None): Interpolate non-orthogonal data into
+            orthogonal grid. 'None' for no interpolation. Integer input for
+            interpolation sizes. For volume data representation.
+        \*\*kwargs: Passed to `scipy.interpolate.griddata <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_.
     Returns:
         grid (ImageData|StructuredGrid): vtk grid classes.
     """
@@ -1112,15 +1200,28 @@ def tvtkGrid(base, data, CenterOrigin=False, IntrpGrid=False, **kwargs):
     # periodicity
     datanew = np.zeros([data.shape[0]+1, data.shape[1]+1, data.shape[2]+1], dtype=float)
     datanew[:-1, :-1, :-1] = copy.deepcopy(data); del data
-    datanew[:, :, -1] = datanew[:, :, 0]
-    datanew[:, -1, :] = datanew[:, 0, :]
     datanew[-1, :, :] = datanew[0, :, :]
-    data = np.transpose(datanew, axes=[2,1,0]); del datanew # to x,y,z
+    datanew[:, -1, :] = datanew[:, 0, :]
+    datanew[:, :, -1] = datanew[:, :, 0]
+    data = copy.deepcopy(datanew); del datanew
 
     # alignment
     bvec = np.array([base[i]-base[0] for i in range(1,4)])
     bvnorm = np.linalg.norm(bvec, axis=1)
     align = bvec @ np.eye(3)
+
+    # Regular interpolation
+    if np.all(InterpGridSize==None):
+        InterpGrid = False
+    else:
+        InterpGrid = True
+        size = np.array(InterpGridSize, ndmin=1, dtype=int)
+        if len(size) == 1:
+            size = size.repeat(3)
+        if len(size) != 3:
+            raise ValueError("Specified dimension of interpolation = {:d}, not commensurate with 3D grid.".format(len(size)))
+        if np.all(size<1):
+            raise ValueError("'InterpGridSize' must have values larger than or equal to 1.")
 
     # ImageData
     if abs(align[0,0]-bvnorm[0]) < 1e-4 \
@@ -1141,7 +1242,7 @@ def tvtkGrid(base, data, CenterOrigin=False, IntrpGrid=False, **kwargs):
         grid.dimensions = data.shape
 
     # StructuredGrid
-    elif IntrpGrid == False:
+    elif InterpGrid == False:
         if CenterOrigin == False:
             fbg = 0.; fed = 1.
         else:
@@ -1169,9 +1270,9 @@ def tvtkGrid(base, data, CenterOrigin=False, IntrpGrid=False, **kwargs):
         )
         pts = np.array([i.flatten() for i in pts]).T @ bvec
         # New grid
-        x = np.linspace(np.min(base[:,0]), np.max(base[:,0]), data.shape[0])
-        y = np.linspace(np.min(base[:,1]), np.max(base[:,1]), data.shape[1])
-        z = np.linspace(np.min(base[:,2]), np.max(base[:,2]), data.shape[2])
+        x = np.linspace(np.min(base[:,0]), np.max(base[:,0]), size[0]*data.shape[0])
+        y = np.linspace(np.min(base[:,1]), np.max(base[:,1]), size[1]*data.shape[1])
+        z = np.linspace(np.min(base[:,2]), np.max(base[:,2]), size[2]*data.shape[2])
         if CenterOrigin == False:
             origin = base[0] + np.array([x[0], y[0], z[0]])
         else:
