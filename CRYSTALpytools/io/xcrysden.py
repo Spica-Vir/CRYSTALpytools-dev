@@ -61,7 +61,8 @@ class XSF():
 
         Args:
             filename (str): Iutput name.
-            grid_index (int): The index of grid to be saved.
+            grid_index (int): The index of grid to be saved, if grid exists.
+                Otherwise return to a class with geometry only.
         Returns:
             cls (XSF)
         """
@@ -132,6 +133,9 @@ class XSF():
         if len(bgrd) != len(egrd):
             raise Exception("Data grid 'BEGIN' and 'END' keywords are not paired. File might have been broken.")
         if len(bgrd) > 0:
+            if grid_index-1 >= len(bgrd):
+                raise Exception("Only {:d} grids are found. Index {:d} exceeds that limit.".format(len(bgrd), grid_index))
+
             bgrd = bgrd[grid_index-1]; egrd = egrd[grid_index-1]
             gsize = np.array(df[0].loc[bgrd+1].strip().split(), dtype=int)
             gdim = len(gsize)
