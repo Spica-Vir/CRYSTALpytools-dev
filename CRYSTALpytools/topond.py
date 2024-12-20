@@ -16,9 +16,10 @@ class ScalarField():
     """
     def plot_2D(
         self, levels=100, lineplot=False, contourline=None, isovalues='%.2f',
-        colorplot=False, colormap='jet', cbar_label=None, a_range=[],
-        b_range=[], edgeplot=False, x_ticks=5, y_ticks=5, figsize=[6.4, 4.8],
-        overlay=None, fig=None, ax_index=None, **kwargs):
+        colorplot=False, colormap='jet', cbar_label=None,
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
         can also get the overlapped plot of ``ScalarField`` and ``Trajectory``
@@ -105,7 +106,7 @@ class ScalarField():
             diff_base = np.abs(overlay.base-self.base)
             if np.any(diff_base>1e-3):
                 raise Exception("The plotting base of surface and trajectory are different.")
-            a_range = []; b_range=[] # no periodicity for Traj
+            a_range = [0., 1.]; b_range=[0., 1.] # no periodicity for Traj
 
         # plot
         ## layout
@@ -216,7 +217,7 @@ class Trajectory():
         import numpy as np
         import matplotlib.pyplot as plt
         import copy
-        from CRYSTALpytools.base.plotbase import _get_operation
+        from CRYSTALpytools.base.plotbase import GridRotation2D
 
         # overlay
         if np.all(overlay!=None) and isinstance(overlay, ScalarField):
@@ -237,7 +238,7 @@ class Trajectory():
 
         ## Get bottom surf figure first
         if np.all(overlay!=None) and isinstance(overlay, ScalarField):
-            kwargs['a_range'] = []; kwargs['b_range'] = [] # no periodicity
+            kwargs['a_range'] = [0., 1.]; kwargs['b_range'] = [0., 1.] # no periodicity
             kwargs['edgeplot'] = False; kwargs['figsize'] = figsize
             kwargs['fig'] = fig; kwargs['ax_index'] = ax_index;
             kwargs['x_ticks'] = x_ticks; kwargs['y_ticks'] = y_ticks
@@ -246,8 +247,8 @@ class Trajectory():
             fig = overlay.plot_2D(**kwargs)
             ax = fig.axes[ax_index]
 
-        ## rotate the trajectory to plotting plane
-        rot, disp = _get_operation(self.base)
+        ## rotate the trajectory to plotting plane, base defined in OAB
+        rot, disp = GridRotation2D(np.vstack([self.base[1], self.base[2], self.base[0]]))
         ## plot TRAJ
         baserot = rot.apply(self.base)
         xmx = np.linalg.norm(baserot[2, :]-baserot[1, :])
@@ -259,14 +260,14 @@ class Trajectory():
             if len(traj) == 1:
                 v = traj[0] - baserot[1]
                 if v[0]>=0 and v[0]<xmx and v[1]>=0 and v[1]<ymx and np.abs(v[2])<=1e-3:
-                    ax.scatter(v[0], v[1], marker=cpt_marker, c=cpt_color, s=cpt_size)
+                    ax.scatter(traj[0,0], traj[0,1], marker=cpt_marker, c=cpt_color, s=cpt_size)
             # plot TRAJ
             else:
                 plttraj = [] # traj in plot plane
                 for v in traj:
                     v = v - baserot[1]
                     if v[0]>=0 and v[0]<xmx and v[1]>=0 and v[1]<ymx and np.abs(v[2])<=1e-3:
-                        plttraj.append(v)
+                        plttraj.append(v+baserot[1])
 
                 if len(plttraj) == 0:
                     continue
@@ -279,8 +280,8 @@ class Trajectory():
                             linestyle=traj_linestyle, linewidth=traj_linewidth)
 
         ax.set_aspect(1.0)
-        ax.set_xlim(0, xmx)
-        ax.set_ylim(0, ymx)
+        ax.set_xlim(baserot[1, 0], baserot[1, 0]+xmx)
+        ax.set_ylim(baserot[1, 1], baserot[1, 1]+ymx)
         return fig
 
 
@@ -331,9 +332,9 @@ class ChargeDensity(ScalarField):
     def plot_2D(
         self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
-        a_range=[], b_range=[], edgeplot=False, x_ticks=5, y_ticks=5,
-        title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
@@ -541,9 +542,9 @@ class SpinDensity(ScalarField):
     def plot_2D(
         self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
         isovalues='%.4f', colorplot=False, colormap='jet', cbar_label='default',
-        a_range=[], b_range=[], edgeplot=False, x_ticks=5, y_ticks=5,
-        title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
@@ -747,9 +748,9 @@ class Gradient(ScalarField):
     def plot_2D(
         self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
-        a_range=[], b_range=[], edgeplot=False, x_ticks=5, y_ticks=5,
-        title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
@@ -967,9 +968,9 @@ class Laplacian(ScalarField):
     def plot_2D(
         self, unit='Angstrom', plot_lapm=False, levels='default', lineplot=True,
         linewidth=1.0, isovalues='%.2f', colorplot=False, colormap='jet',
-        cbar_label='default', a_range=[], b_range=[], edgeplot=False, x_ticks=5,
-        y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        cbar_label='default', a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
@@ -1188,9 +1189,9 @@ class HamiltonianKE(ScalarField):
     def plot_2D(
         self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
-        a_range=[], b_range=[], edgeplot=False, x_ticks=5, y_ticks=5,
-        title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
@@ -1402,9 +1403,9 @@ class LagrangianKE(ScalarField):
     def plot_2D(
         self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
-        a_range=[], b_range=[], edgeplot=False, x_ticks=5, y_ticks=5,
-        title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
@@ -1615,9 +1616,9 @@ class VirialField(ScalarField):
     def plot_2D(
         self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
-        a_range=[], b_range=[], edgeplot=False, x_ticks=5, y_ticks=5,
-        title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
@@ -1827,9 +1828,9 @@ class ELF(ScalarField):
     def plot_2D(
         self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
-        a_range=[], b_range=[], edgeplot=False, x_ticks=5, y_ticks=5,
-        title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs
+        a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
+        fig=None, ax_index=None, **kwargs
     ):
         """
         Plot 2D contour lines, color maps or both for the 2D data set. The user
