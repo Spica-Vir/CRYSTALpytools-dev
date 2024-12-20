@@ -16,9 +16,10 @@ import numpy as np
 def plot_ECHG(
     *echg, unit='Angstrom', output=[], option='both', levels=150,
     lineplot=False, linewidth=1.0, isovalues=None, colorplot=True,
-    colormap='jet', cbar_label='default', a_range=[], b_range=[], rectangle=False,
-    edgeplot=False, x_ticks=5, y_ticks=5, layout=None, title=None,
-    figsize=[6.4, 4.8], sharex=True, sharey=True, fontsize=14, **kwargs):
+    colormap='jet', cbar_label='default', a_range=[0.,1.], b_range=[0.,1.],
+    rectangle=False, edgeplot=False, x_ticks=5, y_ticks=5, layout=None,
+    title=None, figsize=[6.4, 4.8], sharex=True, sharey=True, fontsize=14,
+    **kwargs):
     """
     Read and plot multiple 2D charge density files / objects. The uniform plot
     set-ups are used for comparison.
@@ -191,8 +192,8 @@ def plot_ECHG(
 def plot_relativistics2D(
     *relat, unit='SI', type=[], output=[], direction=['x','y','z'], levels=100,
     quiverplot=True, quiverscale=1.0, colorplot=True, colormap='jet',
-    cbar_label='default', a_range=[], b_range=[], rectangle=False, edgeplot=False,
-    x_ticks=5, y_ticks=5, layout=None, title=None, figsize=[6.4, 4.8],
+    cbar_label='default', a_range=[0., 1.], b_range=[0., 1.], rectangle=False,
+    edgeplot=False, x_ticks=5, y_ticks=5, layout=None, title=None, figsize=[6.4, 4.8],
     sharex=True, sharey=True, fontsize=14, **kwargs):
     """
     Plot 2D vector field properties from relativistics (2c-SCF) calculations.

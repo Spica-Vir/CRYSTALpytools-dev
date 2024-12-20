@@ -3017,7 +3017,7 @@ class Properties_output(POutBASE):
                 return False
             if struc0.num_sites != struc1.num_sites:
                 return False
-            if np.linalg.norm(struc0.frac_coords-struc1.frac_coords)>1e-2:
+            if np.linalg.norm(struc0.frac_coords%1-struc1.frac_coords%1)>1e-2:
                 return False
             return True
         if hasattr(self, 'file_name'):

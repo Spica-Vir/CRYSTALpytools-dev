@@ -683,6 +683,294 @@ def plot_banddos(bands, doss, k_label, beta, overlap, prj, energy_range, k_range
     return fig
 
 
+#---------------------------- grid general manipulation ----------------------#
+
+
+def GridCoordinates(base, shape, meshgrid):
+    """
+    Get cartesian coordinates by equally spaced grid data.
+
+    Args:
+        base (array): 4(3)\*3 Cartesian coordinates of points O, A, B(, C) to
+            define a 3(2)D map. Vectors OA, OB(, OC) are used.
+        shape (array): 1\*nDimen array, nX, nY(, nZ) of data array
+        meshgrid (bool): Get nD mesh grids or 1D array of coordinates.
+    Returns:
+        coords (list): 1\*3(2) list of x, y, z coordinates, either in nA\*nB\*nC
+            mesh grids or in 1D arrays, depending on ``meshgrid``.
+    """
+    import numpy as np
+
+    # sanity check
+    base = np.array(base)
+    shape = np.array(shape, ndmin=1)
+    ndim = shape.shape[0]
+
+    if ndim == 2:
+        if base.shape[0] != 3 or base.shape[1] != 3:
+            raise Exception("2D data grid must be defined on a 3*3 base vector.")
+    elif ndim == 3:
+        if base.shape[0] != 4 or base.shape[1] != 3:
+            raise Exception("3D data grid must be defined on a 4*3 base vector.")
+    else:
+        raise Exception("Only for 2D/3D data grids.")
+    basev = np.vstack([base[i]-base[0] for i in range(1, ndim+1)])
+
+    if meshgrid == False:
+        coords = []
+        for i in range(ndim):
+            frac = np.linspace(0, 1, shape[i], endpoint=False).reshape([-1, 1])
+            coords.append(np.add(frac @ [basev[i]], base[0]))
+    else:
+        fcoords = []
+        for i in range(ndim):
+            fcoords.append(
+                np.linspace(0, 1, shape[i], endpoint=False).reshape([-1, 1])
+            )
+        coords = np.meshgrid(*fcoords, indexing='ij'); del fcoords
+        coords = np.vstack([i.flatten() for i in coords]).T
+        coords = np.add((coords @ basev), base[0])  # n*3 cartesian from 0
+        coords = coords.T.reshape([3]+[i for i in shape])
+    return coords
+
+
+def GridExpand(base, data, display_range):
+    """
+    Expand 2D/3D data grid.
+
+    Args:
+        base (array): 4(3)\*3 Cartesian coordinates of points O, A, B(, C) to
+            define a 3(2)D map. Vectors OA, OB(, OC) are used.
+        data (array): nX\*nY(\*nZ) array of data.
+        display_range (array): 3(2)\*2 array of fractional display range, in
+            \[amin, amax\].
+    Returns:
+        newbase (array): Expanded base vectors.
+        newdata (array): Expanded data grid.
+    """
+    import numpy as np
+
+    # sanity check
+    base = np.array(base)
+    data = np.array(data)
+    display_range = np.array(display_range)
+
+    if data.ndim == 2:
+        if base.shape[0] != 3 or base.shape[1] != 3:
+            raise Exception("2D data grid must be defined on a 3*3 base vector.")
+    elif data.ndim == 3:
+        if base.shape[0] != 4 or base.shape[1] != 3:
+            raise Exception("3D data grid must be defined on a 4*3 base vector.")
+    else:
+        raise Exception("Only for 2D/3D data grids.")
+    basev = np.vstack([base[i]-base[0] for i in range(1, data.ndim+1)])
+
+    dispbg = np.round([i[0] for i in display_range], 12)
+    disped = np.round([i[1] for i in display_range], 12)
+    dist = disped - dispbg
+
+    idx = np.where(dist<1e-12)[0]
+    if len(idx) > 0:
+        direct = ['a', 'b', 'c'][idx[0]]
+        raise Exception("Display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
+            direct, direct, dispbg[idx[0]], direct, disped[idx[0]]))
+
+    # new data and new base
+    newdata = np.zeros(np.array(
+        np.round(dist*data.shape, 0), dtype=int
+    ))
+    newbase = [dispbg @ basev + base[0]]
+    for i in range(data.ndim):
+        newbase = np.vstack([newbase, basev[i]*dist[i] + newbase[0]])
+
+    # duplicate data
+    origin = np.round(np.multiply(dispbg, data.shape), 0)
+    origin = np.array(origin, dtype=int)
+    end = np.round(np.multiply(disped, data.shape), 0)
+    end = np.array(end, dtype=int)
+    if data.ndim == 3:
+        oldidx1 = np.arange(origin[0], end[0], 1)
+        oldidx1 = np.sign(oldidx1) * np.abs(oldidx1) % data.shape[0]
+        oldidx2 = np.arange(origin[1], end[1], 1)
+        oldidx2 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[1]
+        oldidx3 = np.arange(origin[2], end[2], 1)
+        oldidx3 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[2]
+        for i, oi in enumerate(oldidx1):
+            for j, oj in enumerate(oldidx2):
+                for k, ok in enumerate(oldidx2):
+                    newdata[i, j, k] = data[oi, oj, ok]
+    else:
+        oldidx1 = np.arange(origin[0], end[0], 1)
+        oldidx1 = np.sign(oldidx1) * np.abs(oldidx1) % data.shape[0]
+        oldidx2 = np.arange(origin[1], end[1], 1)
+        oldidx2 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[1]
+        for i, oi in enumerate(oldidx1):
+            for j, oj in enumerate(oldidx2):
+                newdata[i, j] = data[oi, oj]
+    return newbase, newdata
+
+
+def GridInterpolate(base, data, method, size):
+    """
+    Interpolate 2D/ 3D grid data by `scipy.interpolate.interpn <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.interpn.html>`_.
+
+    Args:
+        base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
+            base vectors BA, BC (2D) or OA, OB, OC (3D). The sequence is (O),
+            A, B, C.
+        data (array): nX\*nY(\*nZ) data grid.
+        method (str): 'linear', 'nearest', 'slinear', 'cubic'.
+        size (int): The new size of interpolated data (list) or a scaling factor.
+    Returns:
+        DATA (array): nX\*nY(\*nZ) data grid.
+        CRDS (array): (nX\*nY\*nZ)\*3 or (nX\*nY)\*2 cartesian coordinates.
+            Sequence is consistent with the flattened ``DATA``.
+    """
+    import numpy as np
+    from scipy.interpolate import griddata, interpn
+
+    data = np.array(data, dtype=float)
+    base = np.array(base, dtype=float)
+    if data.ndim == 3:
+        if base.shape[0] != 4 or base.shape[1] != 3:
+            raise ValueError('4*3 array of point O, A, B, C must be defined.')
+    elif data.ndim == 2:
+        if base.shape[0] != 3 or base.shape[1] != 3:
+            raise ValueError('3*3 array of point A, B, C must be defined.')
+    else:
+        raise ValueError('Only for 3D or 2D scalar fields.')
+
+    # method
+    method = method.lower()
+    if method not in ['linear', 'nearest', 'slinear', 'cubic']:
+        raise ValueError("Unknown interpolation method: {}.".format(method))
+
+    # size
+    size = np.array(size, ndmin=1, dtype=int)
+    if len(size) == 1:
+        size = size.repeat(data.ndim)
+    if len(size) != data.ndim:
+        raise ValueError("Specified dimension of interpolation = {:d}. The system dimension = {:d}.".format(len(size), data.ndim))
+    if np.all(size<1):
+        raise ValueError("'size' must have values larger than or equal to 1.")
+
+    # Interpolate on coordinates
+    newgrid = [size[i]*data.shape[i] for i in range(data.ndim)]
+    CRDS = GridCoordinates(base, newgrid, meshgrid=True)
+    CRDS = np.transpose(CRDS, axes=(1,2,3,0)).reshape([-1, 3])
+    old_coords = GridCoordinates(base, data.shape, meshgrid=False)
+
+    DATA = interpn(
+        (old_coords[0], old_coords[1], old_coords[2]),
+        data,
+        CRDS,
+        method=method
+    )
+    DATA.reshape(newgrid)
+    del data
+
+    return DATA, CRDS
+
+
+def GridRectangle2D(base, data):
+    """
+    Get 2D grid data on a rectangle regular grid by manipulating the data
+    matrix and orient it to xOy plane.
+
+    Args:
+        base (array): 3\*3 Cartesian coordinates of points O, A, B to define a
+            2D map. Vectors OA, OB are used.
+        data (array): Grid data in nX\*nY.
+    Returns:
+        basenew (array)
+        data (array)
+        X (array): nX\*nY mesh grid of x coordinates
+        Y (array): nX\*nY mesh grid of y coordinates
+    """
+    import numpy as np
+    import copy
+
+    va = base[1] - base[0]
+    lena = np.linalg.norm(va)
+    vb = base[2] - base[0]
+    lenb = np.linalg.norm(vb)
+    theta = np.arccos(np.clip(np.dot(va/lena, vb/lenb), -1.0, 1.0))
+    cosab = np.cos(theta)
+    sinab = np.sin(theta)
+
+    X, Y = np.meshgrid(np.linspace(0, lena, data.shape[0], endpoint=False),
+                       np.linspace(0, lenb, data.shape[1], endpoint=False),
+                       indexing='ij')
+    X = np.round(cosab*Y + X, 12)
+    Y = np.round(sinab*Y, 12)
+
+    if abs(cosab) > 1e-4:
+        if cosab > 0: # triangle from end to bg
+            for j in range(data.shape[1]):
+                idx = np.where(X[:, j]>=lena)[0]
+                if idx.shape[0] < 1: continue
+                i = np.min(idx)
+                tmp = copy.deepcopy(data[i:, j])
+                data[-i:, j] = data[:i, j]
+                data[:-i, j] = tmp
+                tmp = copy.deepcopy(X[i:, j])
+                X[-i:, j] = X[:i, j]
+                X[:-i, j] = tmp - lena
+        else: # triangle from bg to end
+            for j in range(data.shape[1]):
+                idx = np.where(X[:, j]<0)[0]
+                if idx.shape[0] < 1: continue
+                i = np.max(idx)
+                tmp = copy.deepcopy(data[:i+1, j])
+                data[:-i-1, j] = data[i+1:, j]
+                data[-i-1:, j] = tmp
+                tmp = copy.deepcopy(X[:i+1, j])
+                X[:-i-1, j] = X[i+1:, j]
+                X[-i-1:, j] = tmp + lena
+
+        # Bug fix: new X and Y mesh grid cannot be generated by basenew.
+        # Otherwise tiny shifts might occur
+        newb = np.cross(np.cross(va, vb)/sinab/lena/lenb, va/lena) * sinab * lenb + base[0]
+        basenew = np.vstack([base[0], base[1], newb])
+    else:
+        basenew = base
+
+    rot, _ = GridRotation2D(basenew)
+    base2d = rot.apply(basenew)
+    X += base2d[0, 0]
+    Y += base2d[0, 1]
+    return basenew, data, X, Y
+
+
+def GridRotation2D(base):
+    """
+    Get the rotation object and translational movement to align surface norm
+    (to z) and OA axis (to x) of 3D reference frame to the plotting frame. The
+    translational movement is used to move O (plot origin) to z=0. The plotting
+    referance frame is defined by the base vector OA (x) and OB (y).
+
+    Returns:
+        rot (Rotation): The Scipy rotation object.
+        disp (array): Displacement along x, y, z axes
+    """
+    from scipy.spatial.transform import Rotation
+    import numpy as np
+
+    pltx = base[1] - base[0]
+    plty = base[2] - base[0]
+    pltnorm = np.cross(pltx, plty)
+    pltynorm = np.cross(pltnorm, pltx)# Y not necessarily orthogonal to xz plane
+
+    pltx = pltx / np.linalg.norm(pltx)
+    pltynorm = pltynorm / np.linalg.norm(pltynorm)
+    pltnorm = pltnorm / np.linalg.norm(pltnorm)
+
+    oldv = np.vstack([pltx, pltynorm, pltnorm]).T
+    newv = np.eye(3)
+    rot = Rotation.from_matrix(newv @ np.linalg.inv(oldv))
+    disp = -rot.apply(base[0])
+    return rot, disp
+
 #--------------------------- 2D fields based on Matplotlib -------------------#
 
 
@@ -694,7 +982,7 @@ def plot_2Dscalar(fig, ax, data, base, levels, contourline, isovalue, colormap, 
     Args:
         fig (Figure): Matplotlib Figure object
         ax (Axes): Matplotlib Axes object
-        data (array): 2D map data.
+        data (array): 2D map data, in nY\*nX,
         base (array): 3\*3 Cartesian coordinates of points A, B, C to define a
             2D map. Vectors BA and BC are used.
         levels (array|None): Contour line / color isovalues. It also defines
@@ -729,8 +1017,20 @@ def plot_2Dscalar(fig, ax, data, base, levels, contourline, isovalue, colormap, 
     from pymatgen.core.lattice import Lattice
     import copy
 
-    # expand and rectangle
-    X, Y, data, a_range, b_range = _manipulate_2D_grid(data, base, a_range, b_range, rectangle)
+    # General grid manipulations are written in nX*nY and O, A, B
+    basenew = np.vstack([base[1], base[2], base[0]])
+    data = data.T
+
+    basenew, data = GridExpand(basenew, data, [a_range, b_range])
+    if rectangle == True:
+        basenew, data, X, Y = GridRectangle2D(basenew, data)
+        rot,_ = GridRotation2D(basenew) # used later
+        X = X.T; Y = Y.T; data = data.T
+    else:
+        rot,_ = GridRotation2D(basenew)
+        basenew = rot.apply(basenew)
+        CRDS = GridCoordinates(basenew, data.shape, meshgrid=True)
+        X = CRDS[0].T; Y = CRDS[1].T; data = data.T
 
     # plot, put colormap at the back
     if np.all(colormap!=None):
@@ -756,11 +1056,12 @@ def plot_2Dscalar(fig, ax, data, base, levels, contourline, isovalue, colormap, 
         if np.all(isovalue!=None):
             ax.clabel(L, inline=1, fmt=isovalue)
 
-    # plot plane edges
+    # plot plane edges at the origin
     if edgeplot == True:
-        ## get shift: always close to the positive side of the plot
-        xpath, ypath = _get_2D_base_frame(base, a_range, b_range)
-        ax.plot(xpath, ypath,'k-', linewidth=1.0)
+        va = rot.apply((base[2]-base[1]))
+        vb = rot.apply((base[0]-base[1]))
+        path = np.vstack([[0.,0.,0.], va, va+vb, vb, [0.,0.,0.]])
+        ax.plot(path[:,0], path[:,1],'k-', linewidth=1.0)
 
     # New ranges due to changes of a b ranges in non-orthogonal axis
     xrange = [np.round(np.min(X), 2), np.round(np.max(X), 2)]
@@ -814,15 +1115,36 @@ def plot_2Dvector(fig, ax, data, base, scale, colorquiver, levels, colormap, cba
     from pymatgen.core.lattice import Lattice
     import copy
 
-    # expand and rectangle
-    X, Y, data, a_range, b_range = _manipulate_2D_grid(data, base, a_range, b_range, rectangle)
+    # General grid manipulations are written in nX*nY and O, A, B
+    basenew = np.vstack([base[1], base[2], base[0]])
+    data = data.transpose([1, 0, 2])
+
+    baseold = copy.deepcopy(basenew)
+    basenew, datax = GridExpand(baseold, data[:, :, 0], [a_range, b_range])
+    _, datay = GridExpand(baseold, data[:, :, 1], [a_range, b_range])
+    _, dataz = GridExpand(baseold, data[:, :, 2], [a_range, b_range])
+    del data
+    if rectangle == True:
+        baseold = copy.deepcopy(basenew)
+        data = np.dstack([datax, datay, dataz])
+        basenew, datax, X, Y = GridRectangle2D(baseold, data[:, :, 0])
+        _, datay, _, _ = GridRectangle2D(baseold, data[:, :, 1])
+        _, dataz, _, _ = GridRectangle2D(baseold, data[:, :, 2])
+        rot, _ = GridRotation2D(baseold)
+        X = X.T; Y = Y.T;
+        data = np.dstack([datax, datay, dataz]).transpose([1, 0, 2])
+        del datax, datay, dataz
+    else:
+        rot, _ = GridRotation2D(basenew)
+        basenew = rot.apply(basenew)
+        CRDS = GridCoordinates(basenew, datax.shape, meshgrid=True)
+        X = CRDS[0].T; Y = CRDS[1].T;
+        data = np.dstack([datax, datay, dataz]).transpose([1, 0, 2])
+        del datax, datay, dataz
 
     # get projection and norm of the arrows
-    rot, _ = _get_operation(base)
-    x3d = rot.inv().apply([1, 0, 0]) # x axis in 3D reference framework
-    y3d = rot.inv().apply([0, 1, 0]) # y axis in 3D reference framework
-    dataprj = np.dstack([data@x3d, data@y3d])
-    ## get norm
+    xyz3d = rot.apply(np.eye(3)) # xyz axes in 3D reference framework to plot coord
+    dataprj = data @ xyz3d
     vnorm = np.linalg.norm(data, axis=2)
     del data
 
@@ -844,7 +1166,9 @@ def plot_2Dvector(fig, ax, data, base, scale, colorquiver, levels, colormap, cba
     # plot plane edges
     if edgeplot == True:
         ## get shift: always close to the positive side of the plot
-        xpath, ypath = _get_2D_base_frame(base, a_range, b_range)
+        va = rot.apply((base[2]-base[1]))
+        vb = rot.apply((base[0]-base[1]))
+        path = np.vstack([[0.,0.,0.], va, va+vb, vb, [0.,0.,0.]])
         ax.plot(xpath, ypath,'k-', linewidth=1.0)
     # New ranges due to changes of a b ranges in non-orthogonal axis
     xrange = [np.round(np.min(X), 2), np.round(np.max(X), 2)]
@@ -855,296 +1179,6 @@ def plot_2Dvector(fig, ax, data, base, scale, colorquiver, levels, colormap, cba
     ax.set_xlim(xrange[0], xrange[1])
     ax.set_ylim(yrange[0], yrange[1])
     return fig
-
-
-def _manipulate_2D_grid(data, base, a_range, b_range, rectangle):
-    """
-    Repeat 2D grid data and get rectangle region
-
-    Args:
-        data (array): 2D map data.
-        base (array): 3\*3 Cartesian coordinates of points A, B, C to define a
-            2D map. Vectors BA and BC are used.
-        a_range (list): Range of :math:`a` axis (x, or BC) in fractional coordinate.
-        b_range (list): Range of :math:`b` axis (x, or AB) in fractional coordinate.
-        rectangle (bool): If :math:`a, b` are non-orthogonal, plot a rectangle
-            region and reset :math:`b`. If used together with ``b_range``, that
-            refers to the old :math:`b`.
-
-    Returns:
-        X (array): nY\*nX mesh grid.
-        Y (array): nY\*nX mesh grid.
-        data (array): nY\*nX mesh grid data.
-        a_range (array): 1\*2 fractional coordinate of plot range along vector BC.
-        b_range (array): 1\*2 fractional coordinate of plot range along vector BA.
-    """
-    import numpy as np
-    import copy
-
-    vx = base[2, :] - base[1, :] # x, BC
-    len_vx = np.linalg.norm(vx)
-    npt_vx = data.shape[1] # a BA*BC matrix
-    vy = base[0, :] - base[1, :] # y, AB
-    len_vy = np.linalg.norm(vy)
-    npt_vy = data.shape[0]
-    cosxy = np.dot(vx, vy) / np.linalg.norm(vx) / np.linalg.norm(vy)
-    sinxy = np.linalg.norm(np.cross(vx,vy)) / np.linalg.norm(vx) / np.linalg.norm(vy)
-
-    X, Y = np.meshgrid(np.linspace(0, len_vx, npt_vx),
-                       np.linspace(0, len_vy, npt_vy))
-    # orthogonality
-    X = np.round(cosxy, 3)*Y + X
-    Y = np.round(sinxy, 3)*Y
-
-    # periodicity
-    ## a, b ranges are in lattice base vector. Can be non-orthogonal
-    ulen_vx = len_vx / (npt_vx-1)
-    ulen_vy = len_vy / (npt_vy-1)
-    extend = False
-    if len(a_range) == 2:
-        a_range = np.array([np.min(a_range), np.max(a_range)]) * len_vx
-        nlen_vx = a_range[1] - a_range[0]
-        nnpt_vx = int(np.round(nlen_vx/ulen_vx, 0)) + 1
-        extend = True
-        if nlen_vx/len_vx - np.round(nlen_vx/len_vx,0) > 1e-3:
-            raise ValueError('Use integer supercell sizes.')
-    else:
-        a_range = np.array([0., 1.]) * len_vx
-        nlen_vx = len_vx
-        nnpt_vx = npt_vx
-    if len(b_range) == 2:
-        b_range = np.array([np.min(b_range), np.max(b_range)]) * len_vy
-        nlen_vy = b_range[1] - b_range[0]
-        nnpt_vy = int(np.round(nlen_vy/ulen_vy, 0)) + 1
-        extend = True
-        if nlen_vy/len_vy - np.round(nlen_vy/len_vy,0) > 1e-3:
-            raise ValueError('Use integer supercell sizes.')
-    else:
-        b_range = np.array([0., 1.]) * len_vy
-        nlen_vy = len_vy
-        nnpt_vy = npt_vy
-    ## grid
-    if extend == True:
-        # update base vectors
-        X, Y = np.meshgrid(np.linspace(0, nlen_vx, nnpt_vx),
-                           np.linspace(0, nlen_vy, nnpt_vy))
-        len_vx = nlen_vx
-        len_vy = nlen_vy
-        X = np.round(cosxy, 3)*Y + X
-        Y = np.round(sinxy, 3)*Y
-
-        # represent (x,y) in old (vx,vy) basis.
-        shapedata = list(data.shape) # also usable for nY*nX*3 vector data
-        shapedata[0] = nnpt_vy
-        shapedata[1] = nnpt_vx
-        ndata = np.zeros(shapedata, dtype=float)
-        for i in range(nnpt_vy):
-            for j in range(nnpt_vx):
-                idx = j
-                idy = i
-                while idx >= npt_vx: idx -= npt_vx
-                while idx < 0: idx += npt_vx
-                while idy >= npt_vy: idy -= npt_vy
-                while idy < 0: idy += npt_vy
-                ndata[i, j] = data[idy, idx]
-        del data
-        data = copy.deepcopy(ndata)
-        del ndata
-        # shift data grid's origin to a_range[0], b_range[0]
-        ncol = int(np.round(a_range[0]/ulen_vx, 0))
-        nrow = int(np.round(b_range[0]/ulen_vy, 0))
-        if ncol < 0:
-            tmp = copy.deepcopy(data[:, nnpt_vx+ncol:])
-            data[:, -ncol:] = data[:, 0:nnpt_vx+ncol]
-            data[:, 0:-ncol] = tmp
-        else:
-            tmp = copy.deepcopy(data[:, 0:ncol])
-            data[:, 0:nnpt_vx-ncol] = data[:, ncol:]
-            data[:, nnpt_vx-ncol:] = tmp
-        if nrow < 0:
-            tmp = copy.deepcopy(data[nnpt_vy+nrow:, :])
-            data[-nrow:, :] = data[0:nnpt_vy+nrow, :]
-            data[0:-nrow, :] = tmp
-        else:
-            tmp = copy.deepcopy(data[0:nrow, :])
-            data[0:nnpt_vy-nrow, :] = data[nrow:, :]
-            data[nnpt_vy-nrow:, :] = tmp
-
-    # get rectangle region
-    if rectangle == True and np.abs(cosxy) > 1e-3:
-        for i in range(nnpt_vy):
-            if cosxy < 0: # case 1, cosxy < 0
-                j = 0
-                while X[i, j] < 0:
-                    tmp = X[i, j]
-                    X[i, j:-1] = X[i, j+1:]
-                    X[i, -1] = tmp + len_vx
-                    tmpd = data[i, j]
-                    data[i, j:-1] = data[i, j+1:]
-                    data[i, -1] = tmpd
-            else: # case 2, cosxy > 0
-                j = nnpt_vx-1
-                while X[i, j] >= len_vx:
-                    tmp = X[i, j]
-                    X[i, 1:j+1] = X[i, 0:j]
-                    X[i, 0] = tmp - len_vx
-                    tmpd = data[i, j]
-                    data[i, 1:j+1] = data[i, 0:j]
-                    data[i, 0] = tmpd
-        len_vy = len_vy * sinxy
-        cosxy = 0.
-        sinxy = 1.
-
-    return X, Y, data, a_range, b_range
-
-
-def _get_2D_base_frame(base, a_range, b_range):
-    """
-    Get the 2D parallelogram plot boundary. Useful when the plot is extended.
-    The frame is always shifted to the origin, or positive side of the plot and
-    close to the origin.
-
-    Args:
-        base (array): 3\*3 Cartesian coordinates of points A, B, C to define a
-            2D map. Vectors BA and BC are used.
-        a_range (list): Range of :math:`a` axis (x, or BC) in fractional coordinate.
-        b_range (list): Range of :math:`b` axis (x, or AB) in fractional coordinate.
-
-    Returns:
-        xpath (array): 1\*3 array of x coordinates of parallelogram plot boundary.
-        ypath (array): 1\*3 array of y coordinates of parallelogram plot boundary.
-    """
-    import numpy as np
-
-    vx = base[2, :] - base[1, :]
-    len_vx = np.linalg.norm(vx)
-    vy = base[0, :] - base[1, :]
-    len_vy = np.linalg.norm(vy)
-    cosxy = np.dot(vx, vy) / np.linalg.norm(vx) / np.linalg.norm(vy)
-    sinxy = np.linalg.norm(np.cross(vx,vy)) / np.linalg.norm(vx) / np.linalg.norm(vy)
-    shiftx = (a_range[0]/len_vx - int(a_range[0]/len_vx)) * len_vx
-    shifty = (b_range[0]/len_vy - int(b_range[0]/len_vy)) * len_vx
-    if shiftx < 0: shiftx += len_vx
-    if shifty < 0: shifty += len_vy
-    shiftx = shiftx + shifty * cosxy
-    shifty = shifty * sinxy
-    xpath = np.array([0, len_vx, len_vx+len_vy*cosxy, len_vy*cosxy, 0]) + shiftx
-    ypath = np.array([0, 0, len_vy*sinxy, len_vy*sinxy, 0]) + shifty
-    return xpath, ypath
-
-
-def _get_operation(base):
-    """
-    Get the rotation object and translational movement to align surface norm
-    (to z) and BC axis (to x) of 3D reference frame to the plotting frame. The
-    translational movement is used to move B (plot origin) to z=0. The plotting
-    referance frame is defined by the base vector BC (x) and BA (y).
-
-    Returns:
-        rot (Rotation): The Scipy rotation object.
-        disp (array): Displacement along x, y, z axes
-    """
-    from scipy.spatial.transform import Rotation
-    import numpy as np
-
-    pltx = base[2, :] - base[1, :]
-    plty = base[0, :] - base[1, :]
-    pltnorm = np.cross(pltx, plty)
-    pltynorm = np.cross(pltnorm, pltx)# Y not necessarily orthogonal to xz plane
-
-    pltx = pltx / np.linalg.norm(pltx)
-    pltynorm = pltynorm / np.linalg.norm(pltynorm)
-    pltnorm = pltnorm / np.linalg.norm(pltnorm)
-
-    oldv = np.vstack([pltx, pltynorm, pltnorm]).transpose()
-    newv = np.eye(3)
-    rot = Rotation.from_matrix(newv @ np.linalg.inv(oldv))
-    disp = -rot.apply(base[1, :])
-    return rot, disp
-
-
-#---------------------------- grid general manipulation ----------------------#
-
-
-def GridInterpolate(base, data, method, size):
-    """
-    Interpolate 2D/ 3D grid data by `scipy.interpolate.interpn <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.interpn.html>`_.
-
-    Args:
-        base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
-            base vectors BA, BC (2D) or OA, OB, OC (3D). The sequence is (O),
-            A, B, C.
-        data (array): nX\*nY(\*nZ) data grid.
-        method (str): 'linear', 'nearest', 'slinear', 'cubic'.
-        size (int): The new size of interpolated data (list) or a scaling factor.
-    Returns:
-        DATA (array): nX\*nY(\*nZ) data grid.
-        CRDS (array): (nX\*nY\*nZ)\*3 or (nX\*nY)\*2 cartesian coordinates.
-            Sequence is consistent with the flattened ``DATA``.
-    """
-    import numpy as np
-    from scipy.interpolate import griddata, interpn
-
-    data = np.array(data, dtype=float)
-    base = np.array(base, dtype=float)
-    if data.ndim == 3:
-        if base.shape[0] != 4 or base.shape[1] != 3:
-            raise ValueError('4*3 array of point O, A, B, C must be defined.')
-    elif data.ndim == 2:
-        if base.shape[0] != 3 or base.shape[1] != 3:
-            raise ValueError('3*3 array of point A, B, C must be defined.')
-    else:
-        raise ValueError('Only for 3D or 2D scalar fields.')
-
-    # method
-    method = method.lower()
-    if method not in ['linear', 'nearest', 'slinear', 'cubic']:
-        raise ValueError("Unknown interpolation method: {}.".format(method))
-
-    # size
-    size = np.array(size, ndmin=1, dtype=int)
-    if len(size) == 1:
-        size = size.repeat(data.ndim)
-    if len(size) != data.ndim:
-        raise ValueError("Specified dimension of interpolation = {:d}. The system dimension = {:d}.".format(len(size), data.ndim))
-    if np.all(size<1):
-        raise ValueError("'size' must have values larger than or equal to 1.")
-
-    bvec = np.array([base[i]-base[0] for i in range(1,data.ndim+1)])
-    newgrid = [size[i]*data.shape[i] for i in range(data.ndim)]
-    if data.ndim == 3:
-        CRDS = np.meshgrid(np.linspace(0, 1, newgrid[0]),
-                           np.linspace(0, 1, newgrid[1]),
-                           np.linspace(0, 1, newgrid[2]),
-                           indexing='ij')
-        CRDS = np.array([i.flatten() for i in CRDS]).T
-        DATA = interpn(
-            (np.linspace(0, 1, data.shape[0]),
-             np.linspace(0, 1, data.shape[1]),
-             np.linspace(0, 1, data.shape[2])),
-            data,
-            CRDS,
-            method=method
-        )
-        CRDS = CRDS @ bvec
-        DATA = DATA.reshape(newgrid)
-        del data
-    else:
-        CRDS = np.meshgrid(np.linspace(0, 1, newgrid[0]),
-                           np.linspace(0, 1, newgrid[1]),
-                           indexing='ij')
-        CRDS = np.array([i.flatten() for i in CRDS]).T
-        DATA = interpn(
-            (np.linspace(0, 1, data.shape[0]),
-             np.linspace(0, 1, data.shape[1])),
-            data,
-            CRDS,
-            method=method
-        )
-        CRDS = CRDS @ bvec
-        DATA = DATA.reshape(newgrid)
-        del data
-    return DATA, CRDS
 
 
 #------------------------------ 3D plots based on MayaVi----------------------#
