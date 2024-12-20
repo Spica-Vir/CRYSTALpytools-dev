@@ -1051,7 +1051,7 @@ class CStructure(Structure):
 
         idx = np.where(disped-dispbg<1e-12)[0]
         if len(idx) > 0:
-            direct = ['x', 'y', 'z'][idx[0]]
+            direct = ['a', 'b', 'c'][idx[0]]
             raise Exception("Display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No structure is displayed.".format(
                 direct, direct, dispbg[idx[0]], direct, disped[idx[0]]))
 

@@ -1176,7 +1176,7 @@ class ChargeDensity():
     Charge (spin) density object. Unit: :math:`e.\\AA^{-3}`.
 
     Args:
-        data (array): Plot data. nY\*nX\*nSpin (2D) or nZ\*nY\*nX\*nSpin (2D)
+        data (array): Plot data. nY\*nX\*nSpin (2D) or nZ\*nY\*nX\*nSpin (3D)
         base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
             base vectors BA, BC (2D) or OA, OB, OC (3D). The sequence is (O),
             A, B, C.
@@ -1320,11 +1320,27 @@ class ChargeDensity():
         self.data = np.reshape(np.hstack([alpha, beta]), oldshape, order='F')
         return self
 
-    def plot_2D(self, unit='Angstrom', option='both', levels=150, lineplot=False,
-                linewidth=1.0, isovalues=None, colorplot=True, colormap='jet',
-                cbar_label='default', a_range=[], b_range=[], rectangle=False, edgeplot=False,
-                x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8],
-                fig=None, ax_index=None, **kwargs):
+    def plot_2D(self,
+                unit='Angstrom',
+                option='both',
+                levels=150,
+                lineplot=False,
+                linewidth=1.0,
+                isovalues=None,
+                colorplot=True,
+                colormap='jet',
+                cbar_label='default',
+                a_range=[0., 1.],
+                b_range=[0., 1.],
+                rectangle=False,
+                edgeplot=False,
+                x_ticks=5,
+                y_ticks=5,
+                title='default',
+                figsize=[6.4, 4.8],
+                fig=None,
+                ax_index=None,
+                **kwargs):
         """
         Plot 2D charge/spin density map. A wrapper of ``plot.plot_dens_ECHG``
         and ``plot.plot_spin_ECHG``.
@@ -1360,8 +1376,8 @@ class ChargeDensity():
                 ``lineplot=True``. Other properties are not editable. Solid
                 black lines for positive values and 0, dotted for negative.
             isovalues (str|None): Add isovalues to contour lines and set their
-                formats. Useful only if ``lineplot=True``. None for not adding
-                isovalues
+                format string, e.g., ``"%.2f``. Used only if ``lineplot=True``.
+                None for not adding isovalues
             colorplot (bool): Plot color-filled contour plots.
             colormap (str): Matplotlib colormap option. Useful only if
                 ``colorplot=True``.
