@@ -3023,7 +3023,8 @@ class Properties_output(POutBASE):
         if hasattr(self, 'file_name'):
             struc1 = super().get_geometry()
             if compare_struc(struc, struc1) == False:
-                raise Exception('Inconsistent geometries are given in output and CUBE files. Check your input files.')
+                warnings.warn('Inconsistent geometries are given in output and CUBE files, using the one from output.',
+                              stacklevel=2)
             struc = struc1
 
         # Other entries
@@ -3037,7 +3038,8 @@ class Properties_output(POutBASE):
                 if method == 'subtract':
                     data -= data1
                 else:
-                    if compare_struc(struc, struc1) == False:
+                    if compare_struc(struc, struc1) == False and not hasattr(self, 'file_name'):
+                        # only raise when no reliable structure from output is available
                         raise Exception("Inconsistent structure between the initial and the file: '{}'.".format(f))
 
         if method == 'subtract':

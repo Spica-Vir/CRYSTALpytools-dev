@@ -971,6 +971,197 @@ def GridRotation2D(base):
     disp = -rot.apply(base[0])
     return rot, disp
 
+
+def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
+    """
+    .. _ref-tvtkGrid:
+
+    Define a 3D tvtk Grid for `MayaVi <https://docs.enthought.com/mayavi/mayavi/data.html>`_.
+    Only for representing **3D scalar field** defined in the periodic, uniform
+    mesh.
+
+    * For orthogonal data grid aligned to x, y and z axes, return to the
+        ``ImageData`` class.  
+    * For non-orthogonal data grid or not aligned data grid, return to the
+        ``StructuredGrid`` classes, or interpolated ``ImageData`` class by
+        the `scipy.interpolate.griddata() <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_
+        method and linear interpolation. Might be **very time consuming**.
+
+    .. note::
+
+        The input data grid is a periodic one. The generated grid classes are
+        non-periodic but the inital elements are repeated at the end.
+
+    Args:
+        base (array): Base vectors, 4\*3 array of origin and point A, B, C
+        data (array): Scalar field data in column-major order, i.e., nA\*nB\*nC.
+        CenterOrigin (bool): Put origin of base vectors in the center. Usually
+            for reciprocal space visualization.
+        InterpGridSize (array|int|None): Interpolate non-orthogonal data into
+            orthogonal grid. 'None' for no interpolation. Integer input for
+            interpolation sizes. For volume data representation.
+        \*\*kwargs: Passed to `scipy.interpolate.griddata <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_.
+    Returns:
+        grid (ImageData|StructuredGrid): vtk grid classes.
+    """
+    import numpy as np
+    import copy
+    from scipy.interpolate import griddata
+    try:
+        from tvtk.api import tvtk
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
+    data = np.array(data, dtype=float)
+    base = np.array(base, dtype=float)
+    if data.ndim != 3:
+        raise ValueError('For 3D data grid only.')
+    if base.shape[0] != 4 or base.shape[1] != 3:
+        raise ValueError('4*3 array of point O, A, B, C must be defined.')
+
+    # periodicity
+    datanew = np.zeros([data.shape[0]+1, data.shape[1]+1, data.shape[2]+1], dtype=float)
+    datanew[:-1, :-1, :-1] = copy.deepcopy(data); del data
+    datanew[-1, :, :] = datanew[0, :, :]
+    datanew[:, -1, :] = datanew[:, 0, :]
+    datanew[:, :, -1] = datanew[:, :, 0]
+    data = copy.deepcopy(datanew); del datanew
+
+    # alignment
+    bvec = np.array([base[i]-base[0] for i in range(1,4)])
+    bvnorm = np.linalg.norm(bvec, axis=1)
+    align = bvec @ np.eye(3)
+
+    # Regular interpolation
+    if np.all(InterpGridSize==None):
+        InterpGrid = False
+    else:
+        InterpGrid = True
+        size = np.array(InterpGridSize, ndmin=1, dtype=int)
+        if len(size) == 1:
+            size = size.repeat(3)
+        if len(size) != 3:
+            raise ValueError("Specified dimension of interpolation = {:d}, not commensurate with 3D grid.".format(len(size)))
+        if np.all(size<1):
+            raise ValueError("'InterpGridSize' must have values larger than or equal to 1.")
+
+    # ImageData
+    if abs(align[0,0]-bvnorm[0]) < 1e-4 \
+    and abs(align[1,1]-bvnorm[1]) < 1e-4 \
+    and abs(align[2,2]-bvnorm[2]) < 1e-4:
+        if CenterOrigin == False:
+            origin = (base[0,0], base[0,1], base[0,2])
+        else:
+            origin = base[0] - np.sum(bvec, axis=0)*0.5
+            origin = (origin[0], origin[1], origin[2])
+        grid = tvtk.ImageData(spacing=(bvnorm[0]/(data.shape[0]-1),
+                                       bvnorm[1]/(data.shape[1]-1),
+                                       bvnorm[2]/(data.shape[2]-1)),
+                              origin=origin)
+        data = np.transpose(data, axes=[2,1,0]) # To z, y, x as required by vtk
+        grid.point_data.scalars = data.flatten()
+        grid.point_data.scalars.name = 'scalars'
+        grid.dimensions = data.shape
+
+    # StructuredGrid
+    elif InterpGrid == False:
+        if CenterOrigin == False:
+            fbg = 0.; fed = 1.
+        else:
+            fbg = -0.5; fed = 0.5
+        pts = np.meshgrid(
+            np.linspace(fbg, fed, data.shape[0]),
+            np.linspace(fbg, fed, data.shape[1]),
+            np.linspace(fbg, fed, data.shape[2]),
+            indexing='ij'
+        )
+        pts = np.array([i.flatten() for i in pts]).T @ bvec # (nx,ny,nz) * 3
+        grid = tvtk.StructuredGrid(dimensions=(data.shape[0], data.shape[1], data.shape[2]))
+        grid.points = pts
+        grid.point_data.scalars = data.flatten()
+        grid.point_data.scalars.name = 'scalars'
+
+    # Interpolated ImageData grid.
+    else:
+        # Old grid
+        pts = np.meshgrid(
+            np.linspace(0, 1, data.shape[0]),
+            np.linspace(0, 1, data.shape[1]),
+            np.linspace(0, 1, data.shape[2]),
+            indexing='ij'
+        )
+        pts = np.array([i.flatten() for i in pts]).T @ bvec
+        # New grid
+        x = np.linspace(np.min(pts[:,0]), np.max(pts[:,0]), size[0]*data.shape[0])
+        y = np.linspace(np.min(pts[:,1]), np.max(pts[:,1]), size[1]*data.shape[1])
+        z = np.linspace(np.min(pts[:,2]), np.max(pts[:,2]), size[2]*data.shape[2])
+        if CenterOrigin == False:
+            origin = base[0] + np.array([x[0], y[0], z[0]])
+        else:
+            origin = base[0] + np.array([x[0], y[0], z[0]]) - np.sum(bvec, axis=0)*0.5
+        origin = (origin[0], origin[1], origin[2])
+        # interp on new grid
+        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+        DATA = griddata(pts, data.flatten(), (X, Y, Z), **kwargs)
+        del pts, data, X, Y, Z
+
+        DATA = np.transpose(DATA, axes=[2,1,0]) # To z, y, x as required by vtk
+        grid = tvtk.ImageData(spacing=(x[1]-x[0], y[1]-y[0], z[1]-z[0]),
+                              origin=origin)
+        grid.point_data.scalars = DATA.flatten()
+        grid.point_data.scalars.name = 'scalars'
+        grid.dimensions = DATA.shape
+    # ------------------------------------------------------------------------#
+    # Note: The following block is for vtk UnstructuredGrid class. Hexadegra  #
+    # in volume plotting are represented by discrete triangles. A tetrahedron #
+    # method is needed to divide a hexadegron into 6 detrahedra, which hugely #
+    # increases the cost and memory requirement. The code below bulids        #
+    # hexadegronal mesh and rarely tested                                     #
+    # ------------------------------------------------------------------------#
+    # pts = np.meshgrid(
+    #     np.linspace(0, 1, data.shape[0]),
+    #     np.linspace(0, 1, data.shape[1]),
+    #     np.linspace(0, 1, data.shape[2]),
+    #     indexing='ij'
+    # )
+    # pts = np.array([i.flatten() for i in pts]).T @ bvec
+    # # list all the hexahedrons
+    # ncell = int((data.shape[0]-1)*(data.shape[1]-1)*(data.shape[2]-1))
+    # cells = np.zeros([ncell, 9], dtype=int)
+    # ptsnew = np.zeros([8*ncell, 3], dtype=float)
+
+    # nslice = int(data.shape[1] * data.shape[2])
+    # ncol = data.shape[2]
+    # for i in range(data.shape[0]-1):
+    #     countx = int(i * (data.shape[1]-1) * (data.shape[2]-1))
+    #     for j in range(data.shape[1]-1):
+    #         county = int(j * (data.shape[2]-1))
+    #         for k in range(data.shape[2]-1):
+    #             countz = countx + county + k
+    #             nextz = countz + 1
+    #             # vertices
+    #             countv = int(8*countz)
+    #             cells[countz] = [8, countv, countv+1, countv+2, countv+3,
+    #                              countv+4, countv+5, countv+6, countv+7]
+    #             # hexahedron vertices: O, A, A+B, B, C, A+C, A+B+C, B+C
+    #             ptsnew[countv:countv+8] = [
+    #                 pts[countz], pts[countz+nslice], pts[countz+nslice+ncol], pts[countz+ncol],
+    #                 pts[nextz],  pts[nextz+nslice],  pts[nextz+nslice+ncol],  pts[nextz+ncol]
+    #             ]
+    # del pts
+    # cells = cells.flatten()
+    # offset = np.array([i*9 for i in range(ncell)], dtype=int)
+    # cell_types = np.array([tvtk.Hexahedron().cell_type for i in range(ncell)])
+    # cell_array = tvtk.CellArray()
+    # cell_array.set_cells(ncell, cells)
+    # grid = tvtk.UnstructuredGrid(points=ptsnew)
+    # grid.set_cells(cell_types, offset, cell_array)
+    # grid.point_data.scalars = data.flatten()
+    # grid.point_data.scalars.name = 'scalars'
+    # ------------------------------------------------------------------------#
+    return grid
+
+
 #--------------------------- 2D fields based on Matplotlib -------------------#
 
 
@@ -1181,197 +1372,148 @@ def plot_2Dvector(fig, ax, data, base, scale, colorquiver, levels, colormap, cba
     return fig
 
 
-#------------------------------ 3D plots based on MayaVi----------------------#
+#--------------------------- 2D/3D fields based on MayaVi---------------------#
 
 
-def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
+def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
+                  display_range, **kwargs):
     """
-    .. _ref-tvtkGrid:
-
-    Define a 3D tvtk Grid for `MayaVi <https://docs.enthought.com/mayavi/mayavi/data.html>`_.
-    Only for representing **3D scalar field** defined in the periodic, uniform
-    mesh.
-
-    * For orthogonal data grid aligned to x, y and z axes, return to the
-        ``ImageData`` class.  
-    * For non-orthogonal data grid or not aligned data grid, return to the
-        ``StructuredGrid`` classes, or interpolated ``ImageData`` class by
-        the `scipy.interpolate.griddata() <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_
-        method and linear interpolation. Might be **very time consuming**.
-
-    .. note::
-
-        The input data grid is a periodic one. The generated grid classes are
-        non-periodic but the inital elements are repeated at the end.
+    Plot 3D scalar field.
 
     Args:
-        base (array): Base vectors, 4\*3 array of origin and point A, B, C
-        data (array): Scalar field data in column-major order, i.e., nA\*nB\*nC.
-        CenterOrigin (bool): Put origin of base vectors in the center. Usually
-            for reciprocal space visualization.
-        InterpGridSize (array|int|None): Interpolate non-orthogonal data into
-            orthogonal grid. 'None' for no interpolation. Integer input for
-            interpolation sizes. For volume data representation.
-        \*\*kwargs: Passed to `scipy.interpolate.griddata <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_.
+        fig: MayaVi scence object
+        base (array): 4\*3 array of base vectors defining O, A, B, C.
+        data (array): nZ\*nY\*nX array of plot data.
+        isovalue (float|array): Isovalues of 3D contour plots. A number or an
+            array for user-defined value(s) of isosurfaces, **must be consistent
+            with ``unit``**.
+        volume_3d (bool): Display 3D volumetric data instead of isosurfaces.
+        interp (str): Interpolation method. 'no interp', 'linear', 'nearest',
+            'slinear', 'cubic'.
+        interp_size (list[int]|int): The new size of interpolated data (list)
+            or a scaling factor.
+        display_range (array): 3\*2 array defining the displayed region.
+            Fractional coordinates a, b, c are used.
+        \*\*kwargs: Optional keywords passed to MayaVi, listed below.
+        colormap (turple|str): Colormap of isosurface. Or a 1\*3 RGB turple
+            from 0 to 1 to define colors. *Not for volume_3d=True*.
+        opacity (float): Opacity from 0 to 1. For ``volume_3d=True``, that
+            defines the opacity of the maximum value. The opacity of the
+            minimum is half of it.
+        transparent (bool): Scalar-dependent opacity. *Not for volume_3d=True*.
+        vmax (float): Maximum value of colormap.
+        vmin (float): Minimum value of colormap.
+        title (str): Colorbar title.
+        orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
+        nb_labels (int): The number of labels to display on the colorbar.
+        label_fmt (str): The string formater for the labels, e.g., '%.1f'.
     Returns:
-        grid (ImageData|StructuredGrid): vtk grid classes.
+        fig: MayaVi scence object
     """
+    import copy, warnings, re
     import numpy as np
-    import copy
-    from scipy.interpolate import griddata
     try:
-        from tvtk.api import tvtk
+        from mayavi import mlab
+        from tvtk.util.ctf import PiecewiseFunction
     except ModuleNotFoundError:
         raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
-    data = np.array(data, dtype=float)
-    base = np.array(base, dtype=float)
-    if data.ndim != 3:
-        raise ValueError('For 3D data grid only.')
-    if base.shape[0] != 4 or base.shape[1] != 3:
-        raise ValueError('4*3 array of point O, A, B, C must be defined.')
+    #---------------------------------------------------------------------#
+    #                                NOTE                                 #
+    #---------------------------------------------------------------------#
+    # For visualization, data has the dimension of nX*nY*nZ. A transpose  #
+    # is needed!                                                          #
+    #---------------------------------------------------------------------#
 
-    # periodicity
-    datanew = np.zeros([data.shape[0]+1, data.shape[1]+1, data.shape[2]+1], dtype=float)
-    datanew[:-1, :-1, :-1] = copy.deepcopy(data); del data
-    datanew[-1, :, :] = datanew[0, :, :]
-    datanew[:, -1, :] = datanew[:, 0, :]
-    datanew[:, :, -1] = datanew[:, :, 0]
-    data = copy.deepcopy(datanew); del datanew
+    # Input processing and sanity check
+    if data.ndim != 3 or base.shape[0] != 4:
+        raise Exception("A nZ*nY*nX array is needed for input data and a 4*3 array is needed for base vectors.")
+    data = data.T
 
-    # alignment
-    bvec = np.array([base[i]-base[0] for i in range(1,4)])
-    bvnorm = np.linalg.norm(bvec, axis=1)
-    align = bvec @ np.eye(3)
-
-    # Regular interpolation
-    if np.all(InterpGridSize==None):
-        InterpGrid = False
+    if 'vmin' in kwargs.keys():
+        vmin = kwargs['vmin']
     else:
-        InterpGrid = True
-        size = np.array(InterpGridSize, ndmin=1, dtype=int)
-        if len(size) == 1:
-            size = size.repeat(3)
-        if len(size) != 3:
-            raise ValueError("Specified dimension of interpolation = {:d}, not commensurate with 3D grid.".format(len(size)))
-        if np.all(size<1):
-            raise ValueError("'InterpGridSize' must have values larger than or equal to 1.")
-
-    # ImageData
-    if abs(align[0,0]-bvnorm[0]) < 1e-4 \
-    and abs(align[1,1]-bvnorm[1]) < 1e-4 \
-    and abs(align[2,2]-bvnorm[2]) < 1e-4:
-        if CenterOrigin == False:
-            origin = (base[0,0], base[0,1], base[0,2])
-        else:
-            origin = base[0] - np.sum(bvec, axis=0)*0.5
-            origin = (origin[0], origin[1], origin[2])
-        grid = tvtk.ImageData(spacing=(bvnorm[0]/(data.shape[0]-1),
-                                       bvnorm[1]/(data.shape[1]-1),
-                                       bvnorm[2]/(data.shape[2]-1)),
-                              origin=origin)
-        data = np.transpose(data, axes=[2,1,0]) # To z, y, x as required by vtk
-        grid.point_data.scalars = data.flatten()
-        grid.point_data.scalars.name = 'scalars'
-        grid.dimensions = data.shape
-
-    # StructuredGrid
-    elif InterpGrid == False:
-        if CenterOrigin == False:
-            fbg = 0.; fed = 1.
-        else:
-            fbg = -0.5; fed = 0.5
-        pts = np.meshgrid(
-            np.linspace(fbg, fed, data.shape[0]),
-            np.linspace(fbg, fed, data.shape[1]),
-            np.linspace(fbg, fed, data.shape[2]),
-            indexing='ij'
-        )
-        pts = np.array([i.flatten() for i in pts]).T @ bvec # (nx,ny,nz) * 3
-        grid = tvtk.StructuredGrid(dimensions=(data.shape[0], data.shape[1], data.shape[2]))
-        grid.points = pts
-        grid.point_data.scalars = data.flatten()
-        grid.point_data.scalars.name = 'scalars'
-
-    # Interpolated ImageData grid.
+        vmin = np.min(data)
+    if 'vmax' in kwargs.keys():
+        vmax = kwargs['vmax']
     else:
-        # Old grid
-        pts = np.meshgrid(
-            np.linspace(0, 1, data.shape[0]),
-            np.linspace(0, 1, data.shape[1]),
-            np.linspace(0, 1, data.shape[2]),
-            indexing='ij'
-        )
-        pts = np.array([i.flatten() for i in pts]).T @ bvec
-        # New grid
-        x = np.linspace(np.min(base[:,0]), np.max(base[:,0]), size[0]*data.shape[0])
-        y = np.linspace(np.min(base[:,1]), np.max(base[:,1]), size[1]*data.shape[1])
-        z = np.linspace(np.min(base[:,2]), np.max(base[:,2]), size[2]*data.shape[2])
-        if CenterOrigin == False:
-            origin = base[0] + np.array([x[0], y[0], z[0]])
+        vmax = np.max(data)
+
+    if volume_3d == False:
+        isovalue = np.round(np.array(isovalue, ndmin=1), 12)
+        if np.any(isovalue<vmin) or np.any(isovalue>vmax):
+            warings.warn("Some of the isovalues are not within the visualized range, vmin = {:.4f}, vmax = {:.4f}.".format(vmin, vmax),
+                         stacklevel=2)
+        isovalue = isovalue[np.where((isovalue>=vmin)&(isovalue<=vmax))]
+        if len(isovalue) < 1:
+            raise Exception("No isovalue exists in the visulized range.")
+        # elif len(isovalue) > 1: # user must use vmin/vmax instead of isovalues to change data display range.
+        #     if 'vmin' not in kwargs.keys():
+        #         vmin = np.min(isovalue)
+        #     if 'vmax' not in kwargs.keys():
+        #         vmax = np.max(isovalue)
+
+    # Interpolation
+    if interp != 'no interp':
+        data, _ = GridInterpolate(base, data, interp, interp_size)
+
+    # Expansion
+    base, data = GridExpand(base, data, display_range)
+
+    # Visualization
+    if volume_3d == False:
+        grid = tvtkGrid(base, data, CenterOrigin=False, InterpGridSize=None)
+        keys = ['colormap', 'opacity', 'transparent', 'vmax', 'vmin']
+        keywords = dict(figure=fig,
+                        contours=isovalue.tolist(),
+                        colormap='jet',
+                        vmax=vmax,
+                        vmin=vmin)
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+
+        plot = mlab.pipeline.iso_surface(grid, **keywords)
+    else:
+        if vmin*vmax >= 0: nullvalue = vmin - (vmax-vmin)
+        else: nullvalue = 0.
+
+        grid = tvtkGrid(base, data, CenterOrigin=False,
+                        InterpGridSize=interp_size, fill_value=nullvalue)
+        keys = ['vmax', 'vmin']
+        keywords = dict(figure=fig, vmax=vmax, vmin=vmin)
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+
+        plot = mlab.pipeline.volume(grid, **keywords)
+        # transparency
+        if 'opacity' in kwargs.keys():
+            opacity = kwargs['opacity']
         else:
-            origin = base[0] + np.array([x[0], y[0], z[0]]) - np.sum(bvec, axis=0)*0.5
-        origin = (origin[0], origin[1], origin[2])
-        # interp on new grid
-        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
-        DATA = griddata(pts, data.flatten(), (X, Y, Z), **kwargs)
-        del pts, data, X, Y, Z
+            opacity = 1.0
 
-        DATA = np.transpose(DATA, axes=[2,1,0]) # To z, y, x as required by vtk
-        grid = tvtk.ImageData(spacing=(x[1]-x[0], y[1]-y[0], z[1]-z[0]),
-                              origin=origin)
-        grid.point_data.scalars = DATA.flatten()
-        grid.point_data.scalars.name = 'scalars'
-        grid.dimensions = DATA.shape
-    # ------------------------------------------------------------------------#
-    # Note: The following block is for vtk UnstructuredGrid class. Hexadegra  #
-    # in volume plotting are represented by discrete triangles. A tetrahedron #
-    # method is needed to divide a hexadegron into 6 detrahedra, which hugely #
-    # increases the cost and memory requirement. The code below bulids        #
-    # hexadegronal mesh and rarely tested                                     #
-    # ------------------------------------------------------------------------#
-    # pts = np.meshgrid(
-    #     np.linspace(0, 1, data.shape[0]),
-    #     np.linspace(0, 1, data.shape[1]),
-    #     np.linspace(0, 1, data.shape[2]),
-    #     indexing='ij'
-    # )
-    # pts = np.array([i.flatten() for i in pts]).T @ bvec
-    # # list all the hexahedrons
-    # ncell = int((data.shape[0]-1)*(data.shape[1]-1)*(data.shape[2]-1))
-    # cells = np.zeros([ncell, 9], dtype=int)
-    # ptsnew = np.zeros([8*ncell, 3], dtype=float)
+        if vmin*vmax >= 0: # vmin has the lowest opacity
+            vals = np.linspace(vmin, vmax, 10)
+            opci = np.linspace(opacity*0.5, opacity, 10)
+        else: # 0 has the lowest opacity
+            vals = np.hstack([np.linspace(vmin, 0, 5, endpoint=False),
+                              np.linspace(vmax, 0, 5, endpoint=False)[::-1]])
+            opci = np.hstack([np.linspace(opacity, opacity*0.5, 5, endpoint=False),
+                              np.linspace(opacity*0.5, opacity, 5, endpoint=False)])
 
-    # nslice = int(data.shape[1] * data.shape[2])
-    # ncol = data.shape[2]
-    # for i in range(data.shape[0]-1):
-    #     countx = int(i * (data.shape[1]-1) * (data.shape[2]-1))
-    #     for j in range(data.shape[1]-1):
-    #         county = int(j * (data.shape[2]-1))
-    #         for k in range(data.shape[2]-1):
-    #             countz = countx + county + k
-    #             nextz = countz + 1
-    #             # vertices
-    #             countv = int(8*countz)
-    #             cells[countz] = [8, countv, countv+1, countv+2, countv+3,
-    #                              countv+4, countv+5, countv+6, countv+7]
-    #             # hexahedron vertices: O, A, A+B, B, C, A+C, A+B+C, B+C
-    #             ptsnew[countv:countv+8] = [
-    #                 pts[countz], pts[countz+nslice], pts[countz+nslice+ncol], pts[countz+ncol],
-    #                 pts[nextz],  pts[nextz+nslice],  pts[nextz+nslice+ncol],  pts[nextz+ncol]
-    #             ]
-    # del pts
-    # cells = cells.flatten()
-    # offset = np.array([i*9 for i in range(ncell)], dtype=int)
-    # cell_types = np.array([tvtk.Hexahedron().cell_type for i in range(ncell)])
-    # cell_array = tvtk.CellArray()
-    # cell_array.set_cells(ncell, cells)
-    # grid = tvtk.UnstructuredGrid(points=ptsnew)
-    # grid.set_cells(cell_types, offset, cell_array)
-    # grid.point_data.scalars = data.flatten()
-    # grid.point_data.scalars.name = 'scalars'
-    # ------------------------------------------------------------------------#
-    return grid
+        otf = PiecewiseFunction()
+        otf.add_point(nullvalue, 0.)
+        for i, o in zip(vals, opci):
+            otf.add_point(i, o)
+        plot._otf = otf
+        plot._volume_property.set_scalar_opacity(otf)
+
+    keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+    keywords = dict(object=plot)
+    for k, v in zip(kwargs.keys(), kwargs.values()):
+        if k in keys: keywords[k] = v
+    mlab.scalarbar(**keywords)
+
+    return fig
 
 
 #-----------------------------------------------------------------------------#
