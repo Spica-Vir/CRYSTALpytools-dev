@@ -855,18 +855,29 @@ def GridInterpolate(base, data, method, size):
         raise ValueError("'size' must have values larger than or equal to 1.")
 
     # Interpolate on coordinates
-    newgrid = [size[i]*data.shape[i] for i in range(data.ndim)]
-    CRDS = GridCoordinates(base, newgrid, meshgrid=True)
-    CRDS = np.transpose(CRDS, axes=(1,2,3,0)).reshape([-1, 3])
-    old_coords = GridCoordinates(base, data.shape, meshgrid=False)
+    newgrid_size = [size[i]*data.shape[i] for i in range(data.ndim)]
+    if data.ndim == 3:
+        oldgrid = (np.linspace(0, 1, data.shape[0]),
+                   np.linspace(0, 1, data.shape[1]),
+                   np.linspace(0, 1, data.shape[2]))
+        newgrid = np.meshgrid(
+            np.linspace(0, 1, newgrid_size[0]),
+            np.linspace(0, 1, newgrid_size[1]),
+            np.linspace(0, 1, newgrid_size[2]),
+            indexing='ij')
+    else:
+        oldgrid = (np.linspace(0, 1, data.shape[0]),
+                   np.linspace(0, 1, data.shape[1]))
+        newgrid = np.meshgrid(
+            np.linspace(0, 1, newgrid_size[0]),
+            np.linspace(0, 1, newgrid_size[1]),
+            indexing='ij')
 
-    DATA = interpn(
-        (old_coords[0], old_coords[1], old_coords[2]),
-        data,
-        CRDS,
-        method=method
-    )
-    DATA.reshape(newgrid)
+    newgrid = np.array([i.flatten() for i in newgrid]).T
+    DATA = interpn(oldgrid, data, newgrid, method=method)
+    DATA = DATA.reshape(newgrid_size)
+    CRDS = GridCoordinates(base, newgrid_size, meshgrid=True)
+    CRDS = np.transpose(CRDS, axes=(1,2,3,0)).reshape([-1, 3])
     del data
 
     return DATA, CRDS
@@ -976,9 +987,9 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
     """
     .. _ref-tvtkGrid:
 
-    Define a 3D tvtk Grid for `MayaVi <https://docs.enthought.com/mayavi/mayavi/data.html>`_.
-    Only for representing **3D scalar field** defined in the periodic, uniform
-    mesh.
+    Define a 3D/2D tvtk Grid for `MayaVi <https://docs.enthought.com/mayavi/mayavi/data.html>`_.
+    Only for representing **3D/2D scalar field** defined in the periodic,
+    uniform mesh.
 
     * For orthogonal data grid aligned to x, y and z axes, return to the
         ``ImageData`` class.  
@@ -993,7 +1004,7 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
         non-periodic but the inital elements are repeated at the end.
 
     Args:
-        base (array): Base vectors, 4\*3 array of origin and point A, B, C
+        base (array): Base vectors, 3(4)\*3 array of origin and point A, B(, C)
         data (array): Scalar field data in column-major order, i.e., nA\*nB\*nC.
         CenterOrigin (bool): Put origin of base vectors in the center. Usually
             for reciprocal space visualization.
@@ -1014,51 +1025,69 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
 
     data = np.array(data, dtype=float)
     base = np.array(base, dtype=float)
-    if data.ndim != 3:
-        raise ValueError('For 3D data grid only.')
-    if base.shape[0] != 4 or base.shape[1] != 3:
-        raise ValueError('4*3 array of point O, A, B, C must be defined.')
+    ndim = data.ndim
+    if ndim == 3:
+        if base.shape[0] != 4 or base.shape[1] != 3:
+            raise ValueError('4*3 array of point O, A, B, C must be defined.')
+    elif ndim == 2:
+        if base.shape[0] != 3 or base.shape[1] != 3:
+            raise ValueError('3*3 array of point O, A, B must be defined.')
+    else:
+        raise ValueError('For 3D/2D data grid only.')
 
     # periodicity
-    datanew = np.zeros([data.shape[0]+1, data.shape[1]+1, data.shape[2]+1], dtype=float)
-    datanew[:-1, :-1, :-1] = copy.deepcopy(data); del data
-    datanew[-1, :, :] = datanew[0, :, :]
-    datanew[:, -1, :] = datanew[:, 0, :]
-    datanew[:, :, -1] = datanew[:, :, 0]
+    datanew = np.zeros([i+1 for i in data.shape], dtype=float)
+    if ndim == 3:
+        datanew[:-1, :-1, :-1] = copy.deepcopy(data); del data
+        datanew[-1, :, :] = datanew[0, :, :]
+        datanew[:, -1, :] = datanew[:, 0, :]
+        datanew[:, :, -1] = datanew[:, :, 0]
+    else:
+        datanew[:-1, :-1] = copy.deepcopy(data); del data
+        datanew[-1, :] = datanew[0, :]
+        datanew[:, -1] = datanew[:, 0]
+        datanew = datanew.reshape([datanew.shape[0], datanew.shape[1], 1])
     data = copy.deepcopy(datanew); del datanew
 
     # alignment
-    bvec = np.array([base[i]-base[0] for i in range(1,4)])
+    bvec = np.array([base[i]-base[0] for i in range(1, ndim+1)])
+    if ndim == 2: bvec = np.vstack([bvec, np.cross(bvec[0], bvec[1])])
     bvnorm = np.linalg.norm(bvec, axis=1)
     align = bvec @ np.eye(3)
 
-    # Regular interpolation
+    # Regular interpolation size
     if np.all(InterpGridSize==None):
         InterpGrid = False
     else:
         InterpGrid = True
         size = np.array(InterpGridSize, ndmin=1, dtype=int)
         if len(size) == 1:
-            size = size.repeat(3)
-        if len(size) != 3:
-            raise ValueError("Specified dimension of interpolation = {:d}, not commensurate with 3D grid.".format(len(size)))
+            size = size.repeat(ndim)
+        if len(size) != ndim:
+            raise ValueError("Specified dimension of interpolation = {:d}, not commensurate with grid dimensionality.".format(len(size)))
         if np.all(size<1):
             raise ValueError("'InterpGridSize' must have values larger than or equal to 1.")
 
     # ImageData
-    if abs(align[0,0]-bvnorm[0]) < 1e-4 \
-    and abs(align[1,1]-bvnorm[1]) < 1e-4 \
-    and abs(align[2,2]-bvnorm[2]) < 1e-4:
+    isOrthogonal = True
+    for i in range(ndim):
+        if abs(align[i,i]-bvnorm[i]) >= 1e-4: isOrthogonal = False; break
+    if isOrthogonal == True:
         if CenterOrigin == False:
             origin = (base[0,0], base[0,1], base[0,2])
         else:
             origin = base[0] - np.sum(bvec, axis=0)*0.5
-            origin = (origin[0], origin[1], origin[2])
-        grid = tvtk.ImageData(spacing=(bvnorm[0]/(data.shape[0]-1),
-                                       bvnorm[1]/(data.shape[1]-1),
-                                       bvnorm[2]/(data.shape[2]-1)),
-                              origin=origin)
-        data = np.transpose(data, axes=[2,1,0]) # To z, y, x as required by vtk
+            origin = (origin[0], origin[0], origin[0])
+
+        if ndim == 3:
+            spacing = (bvnorm[0]/(data.shape[0]-1),
+                       bvnorm[1]/(data.shape[1]-1),
+                       bvnorm[2]/(data.shape[2]-1))
+        else:
+            spacing = (bvnorm[0]/(data.shape[0]-1),
+                       bvnorm[1]/(data.shape[1]-1), 1.)
+        grid = tvtk.ImageData(spacing=spacing, origin=origin)
+        data = np.transpose(data) # To z, y, x as required by vtk
         grid.point_data.scalars = data.flatten()
         grid.point_data.scalars.name = 'scalars'
         grid.dimensions = data.shape
@@ -1073,11 +1102,11 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
             np.linspace(fbg, fed, data.shape[0]),
             np.linspace(fbg, fed, data.shape[1]),
             np.linspace(fbg, fed, data.shape[2]),
-            indexing='ij'
-        )
+            indexing='ij')
         pts = np.array([i.flatten() for i in pts]).T @ bvec # (nx,ny,nz) * 3
+        # Use x, y, z, consistent with coordinates
         grid = tvtk.StructuredGrid(dimensions=(data.shape[0], data.shape[1], data.shape[2]))
-        grid.points = pts
+        grid.points = pts + base[0]
         grid.point_data.scalars = data.flatten()
         grid.point_data.scalars.name = 'scalars'
 
@@ -1105,7 +1134,7 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
         DATA = griddata(pts, data.flatten(), (X, Y, Z), **kwargs)
         del pts, data, X, Y, Z
 
-        DATA = np.transpose(DATA, axes=[2,1,0]) # To z, y, x as required by vtk
+        DATA = np.transpose(DATA) # To z, y, x as required by vtk
         grid = tvtk.ImageData(spacing=(x[1]-x[0], y[1]-y[0], z[1]-z[0]),
                               origin=origin)
         grid.point_data.scalars = DATA.flatten()
@@ -1384,9 +1413,9 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
         fig: MayaVi scence object
         base (array): 4\*3 array of base vectors defining O, A, B, C.
         data (array): nZ\*nY\*nX array of plot data.
-        isovalue (float|array): Isovalues of 3D contour plots. A number or an
-            array for user-defined value(s) of isosurfaces, **must be consistent
-            with ``unit``**.
+        isovalue (float|array): Isovalues of 3D/2D contour plots. A number
+                or an array for user-defined values of isosurfaces, **must be
+                consistent with ``unit``**.
         volume_3d (bool): Display 3D volumetric data instead of isosurfaces.
         interp (str): Interpolation method. 'no interp', 'linear', 'nearest',
             'slinear', 'cubic'.
@@ -1395,8 +1424,8 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
         display_range (array): 3\*2 array defining the displayed region.
             Fractional coordinates a, b, c are used.
         \*\*kwargs: Optional keywords passed to MayaVi, listed below.
-        colormap (turple|str): Colormap of isosurface. Or a 1\*3 RGB turple
-            from 0 to 1 to define colors. *Not for volume_3d=True*.
+        colormap (turple|str): Colormap of isosurfaces/heatmaps. Or a 1\*3
+            RGB turple from 0 to 1 to define colors. *Not for volume_3d=True*.
         opacity (float): Opacity from 0 to 1. For ``volume_3d=True``, that
             defines the opacity of the maximum value. The opacity of the
             minimum is half of it.
@@ -1447,11 +1476,11 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
         isovalue = isovalue[np.where((isovalue>=vmin)&(isovalue<=vmax))]
         if len(isovalue) < 1:
             raise Exception("No isovalue exists in the visulized range.")
-        # elif len(isovalue) > 1: # user must use vmin/vmax instead of isovalues to change data display range.
-        #     if 'vmin' not in kwargs.keys():
-        #         vmin = np.min(isovalue)
-        #     if 'vmax' not in kwargs.keys():
-        #         vmax = np.max(isovalue)
+        elif len(isovalue) > 1:
+            if 'vmin' not in kwargs.keys():
+                vmin = np.min(isovalue)
+            if 'vmax' not in kwargs.keys():
+                vmax = np.max(isovalue)
 
     # Interpolation
     if interp != 'no interp':
@@ -1509,6 +1538,125 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
 
     keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
     keywords = dict(object=plot)
+    for k, v in zip(kwargs.keys(), kwargs.values()):
+        if k in keys: keywords[k] = v
+    mlab.scalarbar(**keywords)
+
+    return fig
+
+
+def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
+                 display_range, **kwargs):
+
+    """
+    Plot oriented 2D scalar fields in 3D structure.
+
+    Args:
+        fig: MayaVi scence object
+        base (array): 4\*3 array of base vectors defining O, A, B.
+        data (array): nY\*nX array of plot data.
+        levels (float|array): Number of Isovalues of 2D contour plots, equally
+            spaced between ``vmin`` and ``vmax``, or an array for user-define
+            values of contour lines, **'contour_2d=True' only**.
+        contour_2d (bool): Display black contour lines over the colored surface.
+        interp (str): Interpolation method. 'no interp', 'linear', 'nearest',
+            'slinear', 'cubic'.
+        interp_size (list[int]|int): The new size of interpolated data (list)
+            or a scaling factor.
+        display_range (array): 2\*2 array defining the displayed region.
+            Fractional coordinates a, b are used.
+        \*\*kwargs: Optional keywords passed to MayaVi, listed below.
+        colormap (turple|str): Colormap of heatmaps. Or a 1\*3 RGB turple from
+            0 to 1 to define colors.
+        color (turple): Color of contour lines. *'contour_2d=True' only*.
+        line_width (float): Line width of contour plots. *'contour_2d=True' only*.
+        opacity (float): Opacity from 0 to 1. For ``volume_3d=True``, that
+            defines the opacity of the maximum value. The opacity of the
+            minimum is half of it.
+        transparent (bool): Scalar-dependent opacity. *Not for volume_3d=True*.
+        vmax (float): Maximum value of colormap.
+        vmin (float): Minimum value of colormap.
+        title (str): Colorbar title.
+        orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
+        nb_labels (int): The number of labels to display on the colorbar.
+        label_fmt (str): The string formater for the labels, e.g., '%.1f'.
+    Returns:
+        fig: MayaVi scence object
+    """
+    import copy, warnings, re
+    import numpy as np
+    try:
+        from mayavi import mlab
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
+    #---------------------------------------------------------------------#
+    #                                NOTE                                 #
+    #---------------------------------------------------------------------#
+    # For visualization, data has the dimension of nX*nY. A transpose is  #
+    # needed!                                                             #
+    #---------------------------------------------------------------------#
+
+    # Input processing and sanity check
+    if data.ndim != 2 or base.shape[0] != 3:
+        raise Exception("A nZ*nY*nX array is needed for input data and a 4*3 array is needed for base vectors.")
+    base = np.vstack([base[1], base[2], base[0]])
+    data = data.T
+
+    if 'vmin' in kwargs.keys():
+        vmin = kwargs['vmin']
+    else:
+        vmin = np.min(data)
+    if 'vmax' in kwargs.keys():
+        vmax = kwargs['vmax']
+    else:
+        vmax = np.max(data)
+
+    if contour_2d == True:
+        levels = np.round(np.array(levels, ndmin=1), 12)
+        if levels.shape[0] >= 1:
+            if np.any(levels<vmin) or np.any(levels>vmax):
+                warnings.warn("Some of the contours are not within the visualized range, vmin = {:.4f}, vmax = {:.4f}.".format(vmin, vmax),
+                              stacklevel=2)
+            levels = levels[np.where((levels>=vmin)&(levels<=vmax))]
+
+        if levels.shape[0] < 1:
+            raise Exception("No contour exists in the visulized range. vmin = {:.4f}, vmax = {:.4f}.".format(vmin, vmax),)
+
+    # Interpolation
+    if interp != 'no interp':
+        data, _ = GridInterpolate(base, data, interp, interp_size)
+
+    # Expansion
+    base, data = GridExpand(base, data, display_range)
+
+    # Visualization
+    grid = tvtkGrid(base, data, CenterOrigin=False, InterpGridSize=None)
+    keys = ['colormap', 'opacity', 'transparent', 'vmax', 'vmin']
+    keywords = dict(figure=fig,
+                    colormap='jet',
+                    vmax=vmax,
+                    vmin=vmin)
+
+    for k, v in zip(kwargs.keys(), kwargs.values()):
+        if k in keys: keywords[k] = v
+
+    surf = mlab.pipeline.surface(grid, **keywords)
+
+    if contour_2d == True:
+        keys = ['color', 'line_width', 'opacity', 'transparent', 'vmax', 'vmin']
+        keywords = dict(figure=fig,
+                        color=(0,0,0),
+                        contours=levels.tolist(),
+                        vmax=vmax,
+                        vmin=vmin)
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+
+        lines = mlab.pipeline.contour_surface(grid, **keywords)
+
+    keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+    keywords = dict(object=surf)
     for k, v in zip(kwargs.keys(), kwargs.values()):
         if k in keys: keywords[k] = v
     mlab.scalarbar(**keywords)

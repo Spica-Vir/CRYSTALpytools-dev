@@ -1565,6 +1565,201 @@ class ChargeDensity():
         self._set_unit(uold)
         return fig
 
+        def plot_3D(self,
+                unit='Angstrom',
+                option='charge',
+                isovalue=None,
+                volume_3d=False,
+                contour_2d=False,
+                interp='no interp',
+                interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
+                show_the_scene=True,
+                **kwargs):
+        """
+        Visualize **2D or 3D** charge densities with atomic structures using
+        `MayaVi <https://docs.enthought.com/mayavi/mayavi/>`_ (*not installed
+        by default*).
+
+        * For 2D charge/spin densities, plot 2D heatmap with/without contour lines.
+        * For 3D charge/spin densities, plot 3D isosurfaces or volumetric data.
+
+        Args:
+            unit (str): 'Angstrom' for :math:`\\AA^{-3}`, 'a.u.' for Bohr:math:`^{-3}`.
+            option (str): 'charge' or 'spin'.
+            isovalue (float|array): Isovalues of 3D/2D contour plots. A number
+                or an array for user-defined values of isosurfaces, **must be
+                consistent with ``unit``**. By default half between max and min
+                values.
+            volume_3d (bool): *3D only*. Display 3D volumetric data instead of
+                isosurfaces. ``isovalue`` is disabled.
+            contour_2d (bool): *2D only* Display 2D black contour lines over
+                colored contour surfaces.
+            interp (str): Interpolate data to smoothen the plot. 'no interp' or
+                'linear', 'nearest', 'slinear', 'cubic'. please refer to
+                `scipy.interpolate.interpn <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.interpn.html>`_
+                 The interpolated data is not saved.
+            interp_size (list[int]|int): The new size of interpolated data
+                (list) or a scaling factor. *Valid only when ``interp`` is not
+                'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
+            show_the_scene (bool): Display the scene by ``mlab.show()`` and
+                return None. Otherwise return the scene object.
+            \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
+                Allowed keywords are listed below.
+            colormap (turple|str): Colormap of isosurfaces/heatmaps. Or a 1\*3
+                RGB turple from 0 to 1 to define colors. *Not for volume_3d=True*.
+            opacity (float): Opacity from 0 to 1. For ``volume_3d=True``, that
+                defines the opacity of the maximum value. The opacity of the
+                minimum is half of it.
+            transparent (bool): Scalar-dependent opacity. *Not for volume_3d=True*.
+            color (turple): Color of contour lines. *'contour_2d=True' only*.
+            line_width (float): Width of 2D contour lines. *'contour_2d=True' only*.
+            vmax (float): Maximum value of colormap.
+            vmin (float): Minimum value of colormap.
+            title (str): Colorbar title.
+            orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
+            nb_labels (int): The number of labels to display on the colorbar.
+            label_fmt (str): The string formater for the labels, e.g., '%.1f'.
+            atom_color (str): Color map of atoms. 'jmol' or 'cpk'.
+            bond_color (turple): Color of bonds, in a 1\*3 RGB turple from 0 to 1.
+            atom_bond_ratio (str): 'balls', 'large', 'medium', 'small' or
+                'sticks'. The relative sizes of balls and sticks.
+            cell_display (bool): Display lattice boundaries (at \[0., 0., 0.\] only).
+            cell_color (turple): Color of lattice boundaries, in a 1\*3 RGB turple from 0 to 1.
+            cell_linewidth (float): Linewidth of plotted lattice boundaries.
+            display_range (array): 3\*2 array defining the displayed region of
+                the structure. Fractional coordinates a, b, c are used but only
+                the periodic directions are applied.
+            scale (float): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+            special_bonds (dict): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+            azimuth: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            elevation: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            distance: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+                By default set to 'auto'.
+            focalpoint: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            roll: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+        Returns:
+            fig: MayaVi scence object, if ``show_the_scene=False``.
+        """
+        import numpy as np
+        import warnings
+        try:
+            from mayavi import mlab
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
+
+        # Input processing and sanity check
+        if self.dimension != 2 and self.dimension != 3:
+            raise Exception('Not a 3D/2D charge density object.')
+
+        uold = self.unit
+        if self.unit.lower() != unit.lower(): self._set_unit(unit)
+
+        if np.all(self.structure==None):
+            raise Exception("Geometry structure not available.")
+
+        option = option.lower()
+        if option == 'charge': ispin = 0
+        elif option == 'spin': ispin = 1
+        else: raise ValueError("Unknown option: '{}'.".format(option))
+
+        if np.all(isovalue==None):
+            isovalue = (np.max(self.data) - np.min(self.data)) * 0.5 + np.min(self.data)
+
+        interp = interp.lower()
+        if interp not in ['no interp', 'linear', 'nearest', 'slinear', 'cubic']:
+            raise ValueError("Unknown interpolation method : '{}'.".format(interp))
+        if volume_3d == True:
+            interp = 'no interp' # not using GridInterpolate.
+
+
+        # Expansion, check periodicity
+        grid_display_range = np.array(grid_display_range, dtype=float)
+        if self.dimension == 2 and len(grid_display_range) > 2:
+            if grid_display_range[2, 0] != 0 or grid_display_range[2, 1] != 1:
+                warnings.warn("For 2D data grid, a 2x2 display range should be defined.",
+                              stacklevel=2)
+            grid_display_range = grid_display_range[0:2]
+        if len(grid_display_range) != self.dimension:
+            raise Exception("Grid display range must have the same dimensionality as grid data.")
+
+        if 'display_range' in kwargs.keys():
+            display_range = np.array(kwargs['display_range'], dtype=float)
+        else:
+            display_range = np.array([[0,1], [0,1], [0,1]], dtype=float)
+
+        if np.any(self.structure.pbc==False):
+            idir = np.where(self.structure.pbc==False)[0]
+            display_range[idir] = [0., 1.]
+
+        idx = np.where(display_range[:,1]-display_range[:,0]<1e-4)[0]
+        if len(idx) > 0:
+            direct = ['x', 'y', 'z'][idx[0]]
+            raise Exception("Structure display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
+                direct, direct, display_range[idx[0], 0], direct, display_range[idx[0], 1]))
+        idx = np.where(grid_display_range[:,1]-grid_display_range[:,0]<1e-4)[0]
+        if len(idx) > 0:
+            direct = ['x', 'y', 'z'][idx[0]]
+            raise Exception("Grid display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
+                direct, direct, grid_display_range[idx[0], 0], direct, grid_display_range[idx[0], 1]))
+
+        # Plot structure
+        keys = ['atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
+                'cell_color', 'cell_linewidth', 'scale', 'special_bonds']
+        keywords = dict(show_the_scene=False, display_range=display_range)
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+
+        fig = self.structure.visualize(**keywords)
+
+        # Plot data
+        keys = ['colormap', 'opacity', 'transparent', 'line_width', 'color',
+                'vmax', 'vmin', 'title', 'orientation', 'nb_labels', 'label_fmt']
+        if self.dimension == 3: # 3D isosurfaces
+            keywords = dict(fig=fig,
+                            base=self.base,
+                            data=self.data[:, :, :, ispin],
+                            isovalue=isovalue,
+                            volume_3d=volume_3d,
+                            interp=interp,
+                            interp_size=interp_size,
+                            display_range=grid_display_range)
+            for k, v in zip(kwargs.keys(), kwargs.values()):
+                if k in keys: keywords[k] = v
+
+            fig = plot_3Dscalar(**keywords)
+        else: # 2D contour plots
+            keywords = dict(fig=fig,
+                            base=self.base,
+                            data=self.data[:, :, ispin],
+                            levels=isovalue,
+                            contour_2d=contour_2d,
+                            interp=interp,
+                            interp_size=interp_size,
+                            display_range=grid_display_range)
+            for k, v in zip(kwargs.keys(), kwargs.values()):
+                if k in keys: keywords[k] = v
+
+            fig = plot_3Dplane(**keywords)
+
+        # Final setups
+        keys = ['azimuth', 'elevation', 'distance', 'focalpoint', 'roll']
+        keywords = dict(figure=fig, distance='auto')
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+        mlab.view(**keywords)
+
+        if show_the_scene == False:
+            return fig
+        else:
+            mlab.gcf().scene.parallel_projection = True
+            mlab.show()
+            return
+
     def to_xsf(self, filename):
         """
         .. _ref-ChgDensToXSF:
