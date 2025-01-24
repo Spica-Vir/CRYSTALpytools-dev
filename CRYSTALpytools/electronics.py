@@ -419,15 +419,15 @@ class FermiSurface():
         self.cbm = np.zeros([2,], dtype=float)
         self.gap_pos = np.zeros([2, 2, 3], dtype=float)
 
-        nz = self.bands.shape[1]
-        ny = self.bands.shape[2]
-        nx = self.bands.shape[3]
+        nz = self.bands.shape[1]-1 # general grid repeats the last element
+        ny = self.bands.shape[2]-1
+        nx = self.bands.shape[3]-1
         fz = np.linspace(0, 1, nz, endpoint=False)
         fy = np.linspace(0, 1, ny, endpoint=False)
         fx = np.linspace(0, 1, nx, endpoint=False)
         for ispin in range(self.spin):
             nvb = -1; ncb = -1
-            for nbd, bd in enumerate(self.bands[:, :, :, :, ispin]):
+            for nbd, bd in enumerate(self.bands[:, :-1, :-1, :-1, ispin]):
                 bd = np.round(bd, 4) # lower the accuracy
                 if np.all(bd>=0):
                     nvb = nbd - 1; ncb = nbd; break
@@ -435,8 +435,8 @@ class FermiSurface():
                     continue
             if nvb < 0 or ncb < 0:
                 raise ValueError("Cannot find VB/CB. All the bands are below/over Fermi level.")
-            fvbm = self.bands[nvb, :, :, :, ispin].flatten()
-            fcbm = self.bands[ncb, :, :, :, ispin].flatten()
+            fvbm = self.bands[nvb, :-1, :-1, :-1, ispin].flatten()
+            fcbm = self.bands[ncb, :-1, :-1, :-1, ispin].flatten()
             ivbm = np.argmax(fvbm)
             icbm = np.argmin(fcbm)
             vbm = np.round(fvbm[ivbm], 4)
@@ -711,9 +711,9 @@ class FermiSurface():
             kptnew = np.array(pband.shape, dtype=int)
 
             if self.dimension == 3: # 3D plot
-                fracx = np.linspace(-1, 1, kptnew[0], endpoint=False)
-                fracy = np.linspace(-1, 1, kptnew[1], endpoint=False)
-                fracz = np.linspace(-1, 1, kptnew[2], endpoint=False)
+                fracx = np.linspace(-1, 1, kptnew[0])
+                fracy = np.linspace(-1, 1, kptnew[1])
+                fracz = np.linspace(-1, 1, kptnew[2])
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[0].reshape([1, 3])
                 carty = fracy.reshape([-1, 1]) @ self.rlattice[1].reshape([1, 3])
                 cartz = fracz.reshape([-1, 1]) @ self.rlattice[2].reshape([1, 3])
@@ -786,8 +786,8 @@ class FermiSurface():
                     vol._otf = otf
                     vol._volume_property.set_scalar_opacity(otf)
             else: # 2D plot
-                fracx = np.linspace(-1, 1, kptnew[0], endpoint=False)
-                fracy = np.linspace(-1, 1, kptnew[1], endpoint=False)
+                fracx = np.linspace(-1, 1, kptnew[0])
+                fracy = np.linspace(-1, 1, kptnew[1])
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[prdd[0]].reshape([1, 3])
                 carty = fracy.reshape([-1, 1]) @ self.rlattice[prdd[1]].reshape([1, 3])
                 mask = np.zeros_like(pband, dtype=bool)
@@ -1565,7 +1565,7 @@ class ChargeDensity():
         self._set_unit(uold)
         return fig
 
-        def plot_3D(self,
+    def plot_3D(self,
                 unit='Angstrom',
                 option='charge',
                 isovalue=None,
@@ -1646,6 +1646,7 @@ class ChargeDensity():
         """
         import numpy as np
         import warnings
+        from CRYSTALpytools.base.plotbase import plot_3Dscalar, plot_3Dplane
         try:
             from mayavi import mlab
         except ModuleNotFoundError:

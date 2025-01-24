@@ -696,7 +696,7 @@ def GridCoordinates(base, shape, meshgrid):
         shape (array): 1\*nDimen array, nX, nY(, nZ) of data array
         meshgrid (bool): Get nD mesh grids or 1D array of coordinates.
     Returns:
-        coords (list): 1\*3(2) list of x, y, z coordinates, either in nA\*nB\*nC
+        coords (list): 1\*3 list of x, y(, z) coordinates, either in nA\*nB(\*nC)
             mesh grids or in 1D arrays, depending on ``meshgrid``.
     """
     import numpy as np
@@ -823,7 +823,7 @@ def GridInterpolate(base, data, method, size):
         size (int): The new size of interpolated data (list) or a scaling factor.
     Returns:
         DATA (array): nX\*nY(\*nZ) data grid.
-        CRDS (array): (nX\*nY\*nZ)\*3 or (nX\*nY)\*2 cartesian coordinates.
+        CRDS (array): (nX\*nY\*nZ)\*3 or (nX\*nY)\*3 cartesian coordinates.
             Sequence is consistent with the flattened ``DATA``.
     """
     import numpy as np
@@ -877,7 +877,10 @@ def GridInterpolate(base, data, method, size):
     DATA = interpn(oldgrid, data, newgrid, method=method)
     DATA = DATA.reshape(newgrid_size)
     CRDS = GridCoordinates(base, newgrid_size, meshgrid=True)
-    CRDS = np.transpose(CRDS, axes=(1,2,3,0)).reshape([-1, 3])
+    if data.ndim == 3:
+        CRDS = np.transpose(CRDS, axes=(1,2,3,0)).reshape([-1, 3])
+    else:
+        CRDS = np.transpose(CRDS, axes=(1,2,0)).reshape([-1, 3])
     del data
 
     return DATA, CRDS
@@ -1000,8 +1003,7 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
 
     .. note::
 
-        The input data grid is a periodic one. The generated grid classes are
-        non-periodic but the inital elements are repeated at the end.
+        For generality, the input data grid is a non-periodic one.
 
     Args:
         base (array): Base vectors, 3(4)\*3 array of origin and point A, B(, C)
@@ -1032,22 +1034,9 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
     elif ndim == 2:
         if base.shape[0] != 3 or base.shape[1] != 3:
             raise ValueError('3*3 array of point O, A, B must be defined.')
+        data = data.reshape([data.shape[0], data.shape[1], 1])
     else:
         raise ValueError('For 3D/2D data grid only.')
-
-    # periodicity
-    datanew = np.zeros([i+1 for i in data.shape], dtype=float)
-    if ndim == 3:
-        datanew[:-1, :-1, :-1] = copy.deepcopy(data); del data
-        datanew[-1, :, :] = datanew[0, :, :]
-        datanew[:, -1, :] = datanew[:, 0, :]
-        datanew[:, :, -1] = datanew[:, :, 0]
-    else:
-        datanew[:-1, :-1] = copy.deepcopy(data); del data
-        datanew[-1, :] = datanew[0, :]
-        datanew[:, -1] = datanew[:, 0]
-        datanew = datanew.reshape([datanew.shape[0], datanew.shape[1], 1])
-    data = copy.deepcopy(datanew); del datanew
 
     # alignment
     bvec = np.array([base[i]-base[0] for i in range(1, ndim+1)])
@@ -1080,12 +1069,12 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
             origin = (origin[0], origin[0], origin[0])
 
         if ndim == 3:
-            spacing = (bvnorm[0]/(data.shape[0]-1),
-                       bvnorm[1]/(data.shape[1]-1),
-                       bvnorm[2]/(data.shape[2]-1))
+            spacing = (bvnorm[0]/data.shape[0],
+                       bvnorm[1]/data.shape[1],
+                       bvnorm[2]/data.shape[2])
         else:
-            spacing = (bvnorm[0]/(data.shape[0]-1),
-                       bvnorm[1]/(data.shape[1]-1), 1.)
+            spacing = (bvnorm[0]/data.shape[0],
+                       bvnorm[1]/data.shape[1], 1.)
         grid = tvtk.ImageData(spacing=spacing, origin=origin)
         data = np.transpose(data) # To z, y, x as required by vtk
         grid.point_data.scalars = data.flatten()
@@ -1621,7 +1610,7 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
             levels = levels[np.where((levels>=vmin)&(levels<=vmax))]
 
         if levels.shape[0] < 1:
-            raise Exception("No contour exists in the visulized range. vmin = {:.4f}, vmax = {:.4f}.".format(vmin, vmax),)
+            raise Exception("No contour exists in the visulized range. vmin = {:.4f}, vmax = {:.4f}.".format(vmin, vmax))
 
     # Interpolation
     if interp != 'no interp':

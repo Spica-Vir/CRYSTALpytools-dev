@@ -252,7 +252,7 @@ class XSF():
             header += '   %s_%s\n' % ('BEGIN_DATAGRID_3D', grid_name)
             header += '   %8i%8i%8i\n' % (self.grid_data.shape[2],
                                           self.grid_data.shape[1],
-                                          self.grid_data.shape[0])
+                                          self.grid_data.shape[0]) # [[nX] nY] nZ
             header += '   %15.9f%15.9f%15.9f\n' % (self.grid_base[0,0],
                                                    self.grid_base[0,1],
                                                    self.grid_base[0,2])
@@ -281,7 +281,7 @@ class XSF():
             header += ' %s\n' % 'BEGIN_BLOCK_DATAGRID_2D'
             header += '   %s\n' % grid_name
             header += '   %s_%s\n' % ('BEGIN_DATAGRID_2D', grid_name)
-            header += '   %8i%8i\n' % (self.grid_data.shape[0], self.grid_data.shape[1])
+            header += '   %8i%8i\n' % (self.grid_data.shape[1], self.grid_data.shape[0]) # [nX] nY
             header += '   %15.9f%15.9f%15.9f\n' % (self.grid_base[0,0],
                                                    self.grid_base[0,1],
                                                    self.grid_base[0,2])
@@ -352,15 +352,12 @@ class BXSF():
             band_index = [i+1 for i in range(bands.shape[0])]
         iband, ispin = FermiSurface._get_band_index(bands, band_index)
 
-        # XCrySDen defines a general mesh rather than a periodic one
-        self.bands = np.zeros([len(iband), bands.shape[1]+1, bands.shape[2]+1, bands.shape[3]+1])
+        # XCrySDen defines a general mesh
+        self.bands = np.zeros([len(iband), bands.shape[1], bands.shape[2], bands.shape[3]])
         self.band_labels = np.zeros_like(np.zeros([len(iband),]), dtype=str)
         for i in range(len(iband)):
-            self.bands[i, :-1, :-1, :-1] = bands[iband[i], :, :, :, ispin[i]]
+            self.bands[i, :, :, :] = bands[iband[i], :, :, :, ispin[i]]
             self.band_labels[i] = '{:d}0{:d}'.format(iband[i]+1, ispin[i]+1)
-            self.bands[i, -1, :, :] = self.bands[i, 0, :, :]
-            self.bands[i, :, -1, :] = self.bands[i, :, 0, :]
-            self.bands[i, :, :, -1] = self.bands[i, :, :, 0]
         self.bands = self.bands + self.efermi
 
     def write(self, filename, grid_name='UNKNOWN'):
