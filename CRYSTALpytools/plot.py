@@ -16,9 +16,10 @@ import numpy as np
 def plot_ECHG(
     *echg, unit='Angstrom', output=[], option='both', levels=150,
     lineplot=False, linewidth=1.0, isovalues=None, colorplot=True,
-    colormap='jet', cbar_label='default', a_range=[], b_range=[], rectangle=False,
-    edgeplot=False, x_ticks=5, y_ticks=5, layout=None, title=None,
-    figsize=[6.4, 4.8], sharex=True, sharey=True, fontsize=14, **kwargs):
+    colormap='jet', cbar_label='default', a_range=[0.,1.], b_range=[0.,1.],
+    rectangle=False, edgeplot=False, x_ticks=5, y_ticks=5, layout=None,
+    title=None, figsize=[6.4, 4.8], sharex=True, sharey=True, fontsize=14,
+    **kwargs):
     """
     Read and plot multiple 2D charge density files / objects. The uniform plot
     set-ups are used for comparison.
@@ -191,8 +192,8 @@ def plot_ECHG(
 def plot_relativistics2D(
     *relat, unit='SI', type=[], output=[], direction=['x','y','z'], levels=100,
     quiverplot=True, quiverscale=1.0, colorplot=True, colormap='jet',
-    cbar_label='default', a_range=[], b_range=[], rectangle=False, edgeplot=False,
-    x_ticks=5, y_ticks=5, layout=None, title=None, figsize=[6.4, 4.8],
+    cbar_label='default', a_range=[0., 1.], b_range=[0., 1.], rectangle=False,
+    edgeplot=False, x_ticks=5, y_ticks=5, layout=None, title=None, figsize=[6.4, 4.8],
     sharex=True, sharey=True, fontsize=14, **kwargs):
     """
     Plot 2D vector field properties from relativistics (2c-SCF) calculations.
@@ -805,8 +806,9 @@ def plot_topond2D(*topond, unit='Angstrom', type='infer', option='normal',
                   levels='default', lineplot=True, linewidth=1.0, isovalues='%.4f',
                   colorplot=False, colormap='jet', cbar_label='default',
                   cpt_marker='o', cpt_color='k', cpt_size=10, traj_color='r',
-                  traj_linestyle=':', traj_linewidth=0.5, a_range=[], b_range=[],
-                  edgeplot=False, x_ticks=5, y_ticks=5, layout=None, title=None,
+                  traj_linestyle=':', traj_linewidth=0.5,
+                  a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
+                  x_ticks=5, y_ticks=5, layout=None, title=None,
                   figsize=[6.4, 4.8], sharex=True, sharey=True, fontsize=14):
     """
     Read and plot multiple TOPOND 2D plot files / objects. The uniform plot
@@ -976,7 +978,8 @@ def plot_topond2D(*topond, unit='Angstrom', type='infer', option='normal',
                 traj_linewidth, x_ticks, y_ticks, 'default', figsize, None, fig,
                 ax_index)
         else: # overlay plot
-            if a_range != [] or b_range != []:
+            if a_range[0] != 0. or a_range[1] != 1. \
+            or b_range[0] != 0. or b_range[1] != 1.:
                 warnings.warn("Periodic plotting not available for trajectory objects. Using default ranges.",
                               stacklevel=2)
                 a_range_tmp = []; b_range_tmp = []

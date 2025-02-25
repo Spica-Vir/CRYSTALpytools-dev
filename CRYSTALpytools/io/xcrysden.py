@@ -32,6 +32,8 @@ class XSF():
 
         if len(forces) > 0:
             self.forces = np.array(forces, ndmin=2, dtype=float)
+            if self.forces.shape[1] != 4:
+                raise ValueError("Input forces must be a nForce*4 array. The first element is the index of atom and the others are Cartesian components.")
         else:
             self.forces = []
 
@@ -61,7 +63,8 @@ class XSF():
 
         Args:
             filename (str): Iutput name.
-            grid_index (int): The index of grid to be saved.
+            grid_index (int): The index of grid to be saved, if grid exists.
+                Otherwise return to a class with geometry only.
         Returns:
             cls (XSF)
         """
@@ -132,6 +135,9 @@ class XSF():
         if len(bgrd) != len(egrd):
             raise Exception("Data grid 'BEGIN' and 'END' keywords are not paired. File might have been broken.")
         if len(bgrd) > 0:
+            if grid_index-1 >= len(bgrd):
+                raise Exception("Only {:d} grids are found. Index {:d} exceeds that limit.".format(len(bgrd), grid_index))
+
             bgrd = bgrd[grid_index-1]; egrd = egrd[grid_index-1]
             gsize = np.array(df[0].loc[bgrd+1].strip().split(), dtype=int)
             gdim = len(gsize)
@@ -161,7 +167,7 @@ class XSF():
 
         Args:
             filename (str): Output name.
-            geomoly (bool): Only writes geometry into XSF file.
+            geomoly (bool): Writes geometry and forces (if present) only into XSF file.
             grid_name (str): Name of the grid, valid only if ``self.grid_ndim``
                 is not 0.
         """
@@ -248,7 +254,7 @@ class XSF():
             header += '   %s_%s\n' % ('BEGIN_DATAGRID_3D', grid_name)
             header += '   %8i%8i%8i\n' % (self.grid_data.shape[2],
                                           self.grid_data.shape[1],
-                                          self.grid_data.shape[0])
+                                          self.grid_data.shape[0]) # [[nX] nY] nZ
             header += '   %15.9f%15.9f%15.9f\n' % (self.grid_base[0,0],
                                                    self.grid_base[0,1],
                                                    self.grid_base[0,2])
@@ -277,7 +283,7 @@ class XSF():
             header += ' %s\n' % 'BEGIN_BLOCK_DATAGRID_2D'
             header += '   %s\n' % grid_name
             header += '   %s_%s\n' % ('BEGIN_DATAGRID_2D', grid_name)
-            header += '   %8i%8i\n' % (self.grid_data.shape[0], self.grid_data.shape[1])
+            header += '   %8i%8i\n' % (self.grid_data.shape[1], self.grid_data.shape[0]) # [nX] nY
             header += '   %15.9f%15.9f%15.9f\n' % (self.grid_base[0,0],
                                                    self.grid_base[0,1],
                                                    self.grid_base[0,2])
@@ -348,15 +354,12 @@ class BXSF():
             band_index = [i+1 for i in range(bands.shape[0])]
         iband, ispin = FermiSurface._get_band_index(bands, band_index)
 
-        # XCrySDen defines a general mesh rather than a periodic one
-        self.bands = np.zeros([len(iband), bands.shape[1]+1, bands.shape[2]+1, bands.shape[3]+1])
+        # XCrySDen defines a general mesh
+        self.bands = np.zeros([len(iband), bands.shape[1], bands.shape[2], bands.shape[3]])
         self.band_labels = np.zeros_like(np.zeros([len(iband),]), dtype=str)
         for i in range(len(iband)):
-            self.bands[i, :-1, :-1, :-1] = bands[iband[i], :, :, :, ispin[i]]
+            self.bands[i, :, :, :] = bands[iband[i], :, :, :, ispin[i]]
             self.band_labels[i] = '{:d}0{:d}'.format(iband[i]+1, ispin[i]+1)
-            self.bands[i, -1, :, :] = self.bands[i, 0, :, :]
-            self.bands[i, :, -1, :] = self.bands[i, :, 0, :]
-            self.bands[i, :, :, -1] = self.bands[i, :, :, 0]
         self.bands = self.bands + self.efermi
 
     def write(self, filename, grid_name='UNKNOWN'):

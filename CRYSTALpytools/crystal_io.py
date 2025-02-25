@@ -3017,13 +3017,14 @@ class Properties_output(POutBASE):
                 return False
             if struc0.num_sites != struc1.num_sites:
                 return False
-            if np.linalg.norm(struc0.frac_coords-struc1.frac_coords)>1e-2:
+            if np.linalg.norm(struc0.frac_coords%1-struc1.frac_coords%1)>1e-2:
                 return False
             return True
         if hasattr(self, 'file_name'):
             struc1 = super().get_geometry()
             if compare_struc(struc, struc1) == False:
-                raise Exception('Inconsistent geometries are given in output and CUBE files. Check your input files.')
+                warnings.warn('Inconsistent geometries are given in output and CUBE files, using the one from output.',
+                              stacklevel=2)
             struc = struc1
 
         # Other entries
@@ -3037,7 +3038,8 @@ class Properties_output(POutBASE):
                 if method == 'subtract':
                     data -= data1
                 else:
-                    if compare_struc(struc, struc1) == False:
+                    if compare_struc(struc, struc1) == False and not hasattr(self, 'file_name'):
+                        # only raise when no reliable structure from output is available
                         raise Exception("Inconsistent structure between the initial and the file: '{}'.".format(f))
 
         if method == 'subtract':

@@ -598,10 +598,19 @@ class DLVParser():
         na = int((band.shape[3]-1)/2+1)
         nb = int((band.shape[2]-1)/2+1)
         nc = int((band.shape[1]-1)/2+1)
-        bandnew = np.zeros([nband, nc, nb, na, nspin])
+        if na > 1: newna = na+1
+        else: newna = na
+        if nb > 1: newnb = nb+1
+        else: newnb = nb
+        if nc > 1: newnc = nc+1
+        else: newnc = nc
+        bandnew = np.zeros([nband, newnc, newnb, newna, nspin]) # general grid
         idx = np.where(band<9999)
         bandnew[:, (idx[1]+1)%nc, (idx[2]+1)%nb, (idx[3]+1)%na, :] = band[:, idx[1], idx[2], idx[3], :]
         del band, idx
+        if nc > 1: bandnew[:, -1, :, :, :] = bandnew[:, 0, :, :, :]
+        if nb > 1: bandnew[:, :, -1, :, :] = bandnew[:, :, 0, :, :]
+        if na > 1: bandnew[:, :, :, -1, :] = bandnew[:, :, :, 0, :]
         return rlatt, bandnew, 'a.u.'
 
 
