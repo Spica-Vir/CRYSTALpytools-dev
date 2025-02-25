@@ -300,7 +300,8 @@ class FermiSurface():
     .. note::
 
         The data grid is defined and saved in reciprocal unit cell, rather than
-        1BZ.
+        1BZ. To be consistent with real-space data grids, the grid is non-periodic,
+        i.e., the element at the boundary is repeated.
 
     Args:
         geometry (array|CStructure): Matrix of reciprocal lattice, or an
@@ -693,17 +694,17 @@ class FermiSurface():
             else:
                 intband = np.transpose(self.bands[ibd, :, :, :, isp], axes=[2,1,0])
                 intkpts = k_points
-            # Expand to a 2x2 supercell
-            pband = np.zeros(intkpts*2)
+            # Expand to a 2x2 supercell, note it's a general, non-periodic grid
+            pband = np.zeros(intkpts*2-1)
             pband[:intkpts[0], :intkpts[1], :intkpts[2]] = intband
-            pband[intkpts[0]:, :intkpts[1], :intkpts[2]] = intband
-            pband[:intkpts[0], intkpts[1]:, :intkpts[2]] = intband
-            pband[:intkpts[0], :intkpts[1], intkpts[2]:] = intband
-            pband[intkpts[0]:, intkpts[1]:, :intkpts[2]] = intband
-            pband[intkpts[0]:, :intkpts[1], intkpts[2]:] = intband
-            pband[:intkpts[0], intkpts[1]:, intkpts[2]:] = intband
-            pband[intkpts[0]:, intkpts[1]:, intkpts[2]:] = intband
-            del intband, intkpts
+            pband[intkpts[0]:, :intkpts[1], :intkpts[2]] = intband[1:, :, :]
+            pband[:intkpts[0], intkpts[1]:, :intkpts[2]] = intband[:, 1:, :]
+            pband[:intkpts[0], :intkpts[1], intkpts[2]:] = intband[:, :, 1:]
+            pband[intkpts[0]:, intkpts[1]:, :intkpts[2]] = intband[1:, 1:, :]
+            pband[intkpts[0]:, :intkpts[1], intkpts[2]:] = intband[1:, :, 1:]
+            pband[:intkpts[0], intkpts[1]:, intkpts[2]:] = intband[:, 1:, 1:]
+            pband[intkpts[0]:, intkpts[1]:, intkpts[2]:] = intband[1:, 1:, 1:]
+            del intband
 
             if isod == 0: pband = pband[0]
             elif isod == 1: pband = pband[:, 0, :]
@@ -790,7 +791,7 @@ class FermiSurface():
                 fracy = np.linspace(-1, 1, kptnew[1])
                 cartx = fracx.reshape([-1, 1]) @ self.rlattice[prdd[0]].reshape([1, 3])
                 carty = fracy.reshape([-1, 1]) @ self.rlattice[prdd[1]].reshape([1, 3])
-                mask = np.zeros_like(pband, dtype=bool)
+                # mask = np.zeros_like(pband, dtype=bool)
                 for i in range(kptnew[0]):
                     x = cartx[i]
                     for j in range(kptnew[1]):
@@ -801,11 +802,12 @@ class FermiSurface():
                             np.dot(v[l], norms[l]) * dists[l] for l in range(nedge)
                         ])
                         if np.all(dist>-1e-4): continue
-                        mask[i, j] = True
-                # Plot surface
+                        pband[i, j] = np.nan
+                        # mask[i, j] = True
+                # Plot surface, did not find a masking method for pipeline surf.
                 keys = ['colormap', 'opacity', 'transparent', 'vmax', 'vmin', 'warp_scale']
                 keywords = dict(figure=fig,
-                                mask=mask,
+                                # mask=mask,
                                 colormap='jet',
                                 vmax=allmax,
                                 vmin=allmin,
@@ -814,10 +816,13 @@ class FermiSurface():
                     if k in keys: keywords[k] = v
 
                 surf = mlab.surf(pband, **keywords)
-                # Non-orthogonal grid
+                # Non-orthogonal grid, points are shifted by -0.5 for unknown reasons
                 polydata = surf.actor.actors[0].mapper.input
                 pts = np.array(polydata.points)
-                pts[:, prdd] = (pts[:, prdd]-1) @ self.rlattice[prdd, :][:, prdd]/np.array(kptnew/2)
+                dlatt = np.zeros([2, 2])
+                for i, pdir in enumerate(prdd):
+                    dlatt[i, :] = 2 * self.rlattice[pdir, :][prdd] / (kptnew[i]-1)
+                pts[:, prdd] = (pts[:, prdd]+0.5) @ dlatt
                 pts[:, isod] = pts[:, isod] * zscale
                 polydata.points = pts * fig_scale
 
@@ -1174,6 +1179,11 @@ class ElectronBandDOS():
 class ChargeDensity():
     """
     Charge (spin) density object. Unit: :math:`e.\\AA^{-3}`.
+
+    .. note::
+
+        Definition follows the convention of Gaussian CUBE and XCrySDen XSF
+        formats, which requires a non-periodic grid defined over \[0, 1\].
 
     Args:
         data (array): Plot data. nY\*nX\*nSpin (2D) or nZ\*nY\*nX\*nSpin (3D)

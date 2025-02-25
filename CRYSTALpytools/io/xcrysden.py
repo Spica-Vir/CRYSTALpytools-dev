@@ -32,6 +32,8 @@ class XSF():
 
         if len(forces) > 0:
             self.forces = np.array(forces, ndmin=2, dtype=float)
+            if self.forces.shape[1] != 4:
+                raise ValueError("Input forces must be a nForce*4 array. The first element is the index of atom and the others are Cartesian components.")
         else:
             self.forces = []
 
@@ -165,7 +167,7 @@ class XSF():
 
         Args:
             filename (str): Output name.
-            geomoly (bool): Only writes geometry into XSF file.
+            geomoly (bool): Writes geometry and forces (if present) only into XSF file.
             grid_name (str): Name of the grid, valid only if ``self.grid_ndim``
                 is not 0.
         """

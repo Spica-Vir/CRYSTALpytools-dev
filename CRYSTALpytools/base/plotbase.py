@@ -1094,7 +1094,7 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
             indexing='ij')
         pts = np.array([i.flatten() for i in pts]).T @ bvec # (nx,ny,nz) * 3
         # Use x, y, z, consistent with coordinates
-        grid = tvtk.StructuredGrid(dimensions=(data.shape[0], data.shape[1], data.shape[2]))
+        grid = tvtk.StructuredGrid(dimensions=(data.shape[2], data.shape[1], data.shape[0]))
         grid.points = pts + base[0]
         grid.point_data.scalars = data.flatten()
         grid.point_data.scalars.name = 'scalars'
@@ -1542,7 +1542,7 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
 
     Args:
         fig: MayaVi scence object
-        base (array): 4\*3 array of base vectors defining O, A, B.
+        base (array): 3\*3 array of base vectors defining A, B, C.
         data (array): nY\*nX array of plot data.
         levels (float|array): Number of Isovalues of 2D contour plots, equally
             spaced between ``vmin`` and ``vmax``, or an array for user-define
@@ -1588,7 +1588,7 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
 
     # Input processing and sanity check
     if data.ndim != 2 or base.shape[0] != 3:
-        raise Exception("A nZ*nY*nX array is needed for input data and a 4*3 array is needed for base vectors.")
+        raise Exception("A nY*nX array is needed for input data and a 3*3 array is needed for base vectors.")
     base = np.vstack([base[1], base[2], base[0]])
     data = data.T
 
