@@ -51,9 +51,7 @@ class Mode:
             raise AttributeError(
                 'This module is limited to a single frequency calculation.')
 
-        hbar_freq = self.frequency[0] * scst.Avogadro * scst.h * 1e9
-        self.zp_energy = 0.5 * hbar_freq
-
+        self.zp_energy = 0.5 * self.frequency[0] * scst.Avogadro * scst.h * 1e9
         return self.zp_energy
 
     def get_u_vib(self, temperature):
@@ -80,14 +78,20 @@ class Mode:
         if self.ncalc > 1:
             raise AttributeError('This module is limited to a single frequency calculation.')
 
-        self.u_vib = self.get_zp_energy()
+        try:
+            self.u_vib = self.zp_energy
+        except AttributeError:
+            self.u_vib = self.get_zp_energy()
+
         if self.frequency[0] < 1e-4 or temperature < 1e-4:
              pass
         else:
             hbar_freq = self.frequency[0] * scst.Avogadro * scst.h * 1e9
-            kb_t = scst.k * scst.Avogadro * temperature * 1e-3
-            expon = np.exp(hbar_freq / kb_t)
-            self.u_vib += hbar_freq / (expon - 1)
+            beta = hbar_freq / (scst.k * scst.Avogadro * temperature * 1e-3)
+            if beta > 27.64: # > expon > 10^12
+                pass
+            else:
+                self.u_vib += hbar_freq / (np.exp(beta) - 1)
         return self.u_vib
 
     def get_entropy(self, temperature):
@@ -124,11 +128,13 @@ class Mode:
         if self.frequency[0] < 1e-4 or temperature < 1e-4:
             pass
         else:
-            hbar_freq = self.frequency[0] * scst.Avogadro * scst.h * 1e12
-            kb_t = scst.k * scst.Avogadro * temperature
-            expon = np.exp(hbar_freq / kb_t)
-            entS = kb_t * (hbar_freq / kb_t / (expon - 1) - np.log(1 - 1 / expon))
-            self.entropy += entS / temperature
+            kb = scst.k * scst.Avogadro
+            beta = (self.frequency[0] * scst.Avogadro * scst.h * 1e12) / (kb * temperature)
+            if beta > 27.64: # > expon > 10^12
+                pass
+            else:
+                exp = np.exp(beta)
+                self.entropy = kb * (beta/(exp-1) - np.log(exp-1) + beta)
         return self.entropy
 
     def get_c_v(self, temperature):
@@ -166,10 +172,13 @@ class Mode:
         if self.frequency[0] < 1e-4 or temperature < 1e-4:
             pass
         else:
-            hbar_freq = self.frequency[0] * scst.Avogadro * scst.h * 1e12
-            kb_t = scst.k * scst.Avogadro * temperature
-            expon = np.exp(hbar_freq / kb_t)
-            self.c_v = hbar_freq**2 / kb_t / temperature * expon / (expon - 1)**2
+            kb = scst.k * scst.Avogadro
+            beta = (self.frequency[0] * scst.Avogadro * scst.h * 1e12) / (kb * temperature)
+            if beta > 27.64: # > expon > 10^12
+                pass
+            else:
+                exp = np.exp(beta)
+                self.c_v = beta**2 * kb / (exp - 2 + 1/exp)
         return self.c_v
 
     # def get_classical_amplitude(self, struc):
@@ -411,7 +420,7 @@ class Harmonic():
                      imaginary_tol=1e-4, q_overlap_tol=1e-4, q_id=None, q_coord=None):
         """
         Build a Harmonic object from `Phonopy <https://phonopy.github.io/phonopy/>`_
-        'band.yaml' or 'qpoints.yaml' file.
+        'band.yaml', 'mesh.yaml' or 'qpoints.yaml' file.
 
         .. note::
 
@@ -736,6 +745,8 @@ class Quasi_harmonic:
         self.temperature = np.array(temperature, dtype=float, ndmin=1)
         self.pressure = np.array(pressure, dtype=float, ndmin=1)
         self.filename = filename
+        # should be changed by the corresponding method only.
+        self.method = 'unknown'
 
     def from_HA_files(self, *input_files, imaginary_tol=1e-4, q_overlap_tol=1e-4,
                       mode_sort_tol=0.4):
@@ -865,8 +876,7 @@ class Quasi_harmonic:
         Args:
             phono_yaml (list[str]|str): ncalc\*1 list of Phonopy files.
             struc_yaml (list[str]|str): ncalc\*1 list of Phonopy phonopy.yaml or
-                phonopy_disp.yaml files. *Needed only if a qpoint.yaml/
-				mesh.yaml file is read.*
+                phonopy_disp.yaml files. *Needed only if a qpoint.yaml file is read.*
             edft (list[float]): ncalc\*1 list / array of DFT energies. Unit:
 				kJ/mol.
             scale (float): Scaling factor of phonon frequency.
@@ -1161,14 +1171,14 @@ class Quasi_harmonic:
             Output.write_QHA_thermogru(self)
         return self
 
-    def thermo_eos(self, eos_method='birch_murnaghan', poly_order=[2, 3],
+    def thermo_eos(self, eos_method='birch_murnaghan', poly_order=[3, 4],
                    mutewarning=False, **kwargs):
         """
         Obtain thermodynamic properties by fitting EOS, which is fitted by the
         Helmholtz free energies of sampled harmonic phonons. The explicit
         sorting and fitting of frequency-volume relationship is disabled.
 
-        Entropy is obtained by taking the derivation of Gibbs free energy at
+        Entropy is obtained by taking the derivative of Gibbs free energy at
         constant pressure.
 
         .. math::
@@ -1182,14 +1192,19 @@ class Quasi_harmonic:
 
             C_{p}=-T\\left(\\frac{\\partial^{2}G}{\\partial T^{2}}\\right)_{p}
 
+        :math:`G(T)` is fitted as polynomial specified by ``poly_order``. The
+        first order is forced to be 0 to ensure :math:`S=0` at 0 K.
+
         .. note::
 
-            ``poly_order`` should >= 2.
+            For a good fitting of :math:`G(T)`, entropy and c_p, the number of
+            temperatures must >= 5. ``poly_order`` must > 2.
 
         For arguments, see ``self.thermo_freq``.
 
         Returns:
             self (Quasi_harmonic): New attributes listed below
+            self.method (str): 'Multi-EOS fit'
             self.temperature (array): Unit: K
             self.pressure (array): Unit: GPa
             self.volume (array): nPressure\*nTemperature, same below. Equilibrium volumes. Unit: :math:`\\AA^{3}`
@@ -1197,8 +1212,11 @@ class Quasi_harmonic:
             self.gibbs (array): Gibbs free energy. Unit: kJ/mol
             self.entropy (array): Entropy. Unit: :math:`J.mol^{-1}.K^{-1}`
             self.c_p (array): Constant pressure specific heat. Unit: :math:`J.mol^{-1}.K^{-1}`
-            self.fe_eos (list[Pymatgen EOS]): nTemperature\*1 list of Pymatgen EOS objects. EOSs used to fit HA free energy at constant temperature.
-            self.fe_eos_method (str): The name of EOS used.
+            self.eos (list[Pymatgen EOS]): nTemperature\*1 list of Pymatgen EOS objects. EOSs used to fit HA free energy at constant temperature.
+            self.eos_method (str): The name of EOS used.
+            self.gibbs_fit (list[Polynomial]): nPressure list of Polynomials of fitted Gibbs free energy, for entropy and c_p.
+            self.fe_eos: Deprecated. Synonym of 'self.eos'.
+            self.fe_eos_method: Deprecated. Synonym of 'self.fe_eos_method'.
 
         :raise Exception: If the number of HA calculations is less than 4.
         :raise Exception: If temperature or pressure is defined neither here nor during initialization.
@@ -1210,50 +1228,63 @@ class Quasi_harmonic:
         from sympy import diff, lambdify, symbols
         from CRYSTALpytools.thermodynamics import Output
 
-        # Check the number of calculations
+        # Sanity check
         if self.ncalc < 4: raise Exception('Insufficient database. Increase HA phonons')
 
+        if self.method != 'Multi-EOS fit': refit = True
+        else: refit = False
+
         # Generate temperature and pressure series
-        if 'temperature' in kwargs:
-            if len(self.temperature)>0 and not mutewarning:
-                warnings.warn('Temperature attribute exists. Input temperatures will be used to update the attribute.',
+        if 'temperature' in kwargs and len(self.temperature)>0:
+            if mutewarning == False or refit == False:
+                warnings.warn('Temperature exists. Using new temperatures will update all the fittings if present.',
                               stacklevel=2)
             self.temperature = np.array(kwargs['temperature'], dtype=float, ndmin=1)
-            self._clean_attr()
-        if 'pressure' in kwargs:
-            if len(self.pressure)>0 and not mutewarning:
-                warnings.warn('Pressure attribute exists. Input pressures will be used to update the attribute.',
+            self._clean_attr(); refit = True
+        if 'pressure' in kwargs and len(self.pressure)>0:
+            if mutewarning == False or refit == False:
+                warnings.warn('Pressure exists. Using new pressures will update all the fittings if present.',
                               stacklevel=2)
             self.pressure = np.array(kwargs['pressure'], dtype=float, ndmin=1)
-            self._clean_attr()
+            self._clean_attr(); refit = True
         if len(self.temperature)==0 or len(self.pressure)==0:
             raise Exception('Temperature and pressure should be specified.')
 
-        # Get data for fitting. Helmholtz: nTempt*nCalc matrix
+        if len(self.temperature) < 5:
+            raise Exception("At least 5 temperatures are required")
+
+        if refit == False:
+            warnings.warn('Nothing to re-fit. Return to the same object.', stacklevel=2)
+            return self
+
+        # polynomial, at least 2 redundant data points
+        poly_order = np.unique(np.array(poly_order, dtype=int, ndmin=1))
+        poly_order = poly_order[np.where((poly_order<len(self.temperature))&(poly_order>2))[0]]
+        if len(poly_order) == 0:
+            raise Exception('At least a cubic polynomial and order+1 temperatures are needed for polynomial fitting.')
+
+        # Fit EOS
+        self.method = 'Multi-EOS fit'
         helmholtz = np.zeros([len(self.temperature), self.ncalc], dtype=float)
         for idx_c, calc in enumerate(self.combined_phonon):
             calc.thermodynamics(sumphonon=True, temperature=self.temperature, pressure=[0.])
             helmholtz[:, idx_c] = calc.helmholtz
 
-        # Fit EOS
         eos_method = eos_method.casefold()
-        if hasattr(self, 'fe_eos') and not mutewarning:
-            warnings.warn('Harmonic free energy EOS is fitted. To keep the consistency, it will not be updated.',
-                          stacklevel=2)
-        else:
-            self.fe_eos_method = eos_method
-            self.fe_eos = []
-            for idx_t, t in enumerate(self.temperature):
-                eos_command = 'self.eos_fit(self.combined_volume, helmholtz[idx_t, :], eos_method, write_out=False'
-                # Polynomial / Deltafactor / Numerical
-                for idx, key in enumerate(kwargs.keys()):
-                    if key == 'temperature' or key == 'pressure':
-                        continue
-                    value = list(kwargs.values())[idx]
-                    eos_command += ', {}={}'.format(key, value)
-                eos_command += ')'
-                eos, _ = eval(eos_command)
-                self.fe_eos.append(eos)
+        self.eos_method = eos_method
+        self.eos = []
+        for idx_t, t in enumerate(self.temperature):
+            eos_command = 'self.eos_fit(self.combined_volume, helmholtz[idx_t, :], eos_method, write_out=False'
+            # Polynomial / Deltafactor / Numerical
+            for idx, key in enumerate(kwargs.keys()):
+                if key == 'temperature' or key == 'pressure':
+                    continue
+                value = list(kwargs.values())[idx]
+                eos_command += ', {}={}'.format(key, value)
+            eos_command += ')'
+            eos, _ = eval(eos_command)
+            self.eos.append(eos)
+
         # Get thermoproperties
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
         self.helmholtz = np.zeros(self.volume.shape)
@@ -1261,14 +1292,14 @@ class Quasi_harmonic:
         self.entropy = np.zeros(self.volume.shape)
         self.c_p = np.zeros(self.volume.shape)
         v = symbols('v')
-        for idx_t, eos in enumerate(self.fe_eos):
+        for idx_t, eos in enumerate(self.eos):
             p_eos = -diff(eos(v), v, 1)
             for idx_p, p in enumerate(self.pressure):
                 p_kj = p * scst.Avogadro / 1e24  # GPa --> kJ/mol.Angstrom^3
                 lam_p = lambdify(v, (p_eos - p_kj)**2, 'numpy')
                 fit = fmin(lam_p, eos.v0, full_output=True, disp=False)
                 if np.isnan(fit[0]) == True:
-                    raise ValueError('EOS fitting failed at %6.2f K, %6.2f GPa. More sampling points needed.' % (self.temperature[idx_t], p))
+                    raise Exception('EOS fitting failed at %6.2f K, %6.2f GPa. More sampling points needed.' % (self.temperature[idx_t], p))
                 if (fit[0] < min(self.combined_volume) or fit[0] > max(self.combined_volume)) and not mutewarning:
                     warnings.warn('Optimized volume exceeds the sampled range. Special care should be taken of.\n  Volume: %12.4f, Temperature: %6.2f, Pressure: %6.2f\n'
                                   % (fit[0], self.temperature[idx_t], p), stacklevel=2)
@@ -1277,38 +1308,46 @@ class Quasi_harmonic:
                 self.gibbs[idx_p, idx_t] = eos(fit[0]) + p_kj * fit[0]
 
         # Second fit G(T; p), get entropy and C_p
-        poly_order = np.unique(np.array(poly_order, dtype=int, ndmin=1))
-        if np.max(poly_order) > len(self.temperature) - 1 and not mutewarning:
-            warnings.warn('Temperature series not sufficient for the order of polynomial fitting.\n Too high values will be removed.\n',
-                          stacklevel=2)
-        poly_order = poly_order[np.where(poly_order<len(self.temperature))[0]]
+
+        # a polynomial without constant and first order term
+        def poly_gibbs(param, x, y):
+            express = np.zeros([len(x)])
+            for order, p in enumerate(param): express += p * x**(order + 2)
+            return express - y
 
         idx_tmin = np.argmin(self.temperature)
         tmin = self.temperature[idx_tmin]
         dt = self.temperature - tmin
+        self.gibbs_fit = []
         for idx_p, gibbs in enumerate(self.gibbs):
             r_square = []
-            func = []
+            allfunc = []
             for order in poly_order:
                 if order < 2:
                     warnings.warn('The minimum order of polynomial is 2. Skip this entry.')
                     continue
                 gmin = gibbs[idx_tmin]
                 dg = gibbs - gmin
-                opt = least_squares(self._poly_no_cst,
-                                    np.array([1. for i in range(order)]),
+                opt = least_squares(poly_gibbs,
+                                    np.zeros([order-1,])+1,
                                     args=(dt, dg))
-                poly = np.polynomial.polynomial.Polynomial(np.insert(opt.x, 0, 0.))
-                func.append(poly)
+                poly = np.polynomial.polynomial.Polynomial(np.concatenate([[0., 0.,], opt.x]))
+                allfunc.append(poly)
                 r_square.append(1 - np.sum((dg - poly(dt))**2) / np.sum((dg - np.mean(dg))**2))
 
-            self.fit_order = poly_order[np.argmax(r_square)]
-            entropy = func[np.argmax(r_square)].deriv(1)
+            func = allfunc[np.argmax(r_square)]
+            self.gibbs_fit.append(func)
+
+        for idx_p, gibbs in enumerate(self.gibbs):
+            func = self.gibbs_fit[idx_p]
+            entropy = func.deriv(1)
             self.entropy[idx_p, :] = -entropy(dt) * 1000.
-            c_p = func[np.argmax(r_square)].deriv(2)
+            c_p = func.deriv(2)
             self.c_p[idx_p, :] = -c_p(dt) * 1000 * self.temperature
 
-        # Print output file
+        # Deprecated attributes and methods
+        self.fe_eos_method = self.eos_method
+        self.fe_eos = self.eos
         if np.all(self.filename!=None):
             Output.write_QHA_thermoeos(self)
         return self
@@ -1468,11 +1507,11 @@ class Quasi_harmonic:
             raise AttributeError('Expansion coefficient should be fit at first.')
 
         # Fit EOS
-        if not hasattr(self, 'fe_eos'): # thermo_freq
+        if self.method != 'Multi-EOS fit': # thermo_freq
             if len(self.pressure) < 4:
                 raise Exception('Insufficient database. Increase the number of pressures calculated (>=4).')
-            self.fe_eos = []
-            self.fe_eos_method = self.e0_eos_method
+            self.eos = []
+            self.eos_method = self.e0_eos_method
             for idx_t, t in enumerate(self.temperature):
                 eos_command = 'self.eos_fit(self.volume[:, idx_t], self.helmholtz[:, idx_t], self.e0_eos_method, write_out=False'
                 # Polynomial / Deltafactor / Numerical
@@ -1481,12 +1520,12 @@ class Quasi_harmonic:
                     eos_command += ', {}={}'.format(key, value)
                 eos_command += ')'
                 eos, _ = eval(eos_command)
-                self.fe_eos.append(eos)
+                self.eos.append(eos)
 
         # Get K_T
         self.k_t = np.zeros(self.volume.shape)
         v = symbols('v')
-        for idx_t, eos in enumerate(self.fe_eos):
+        for idx_t, eos in enumerate(self.eos):
             df = diff(eos(v), v, 2)
             lam_df = lambdify(v, df, 'numpy')
             self.k_t[:, idx_t] = self.volume[:, idx_t] * lam_df(self.volume[:, idx_t]) * 1e24 / scst.Avogadro
@@ -2145,7 +2184,7 @@ self.lattice is stored as a nPressure * nTemperature array.''')
         removed to keep consistency.
         """
         attr_list = ['volume', 'helmholtz', 'gibbs', 'entropy', 'c_v', 'c_p',
-                     'k_t', 'k_s', 'fe_eos_method', 'fe_eos', 'gruneisen',
+                     'k_t', 'k_s', 'eos_method', 'eos', 'gruneisen',
                      'alpha_vgru', 'c_pgru', 'k_sgru', 'alpha_v', 'vol_fit']
 
         for attr in attr_list:
@@ -2192,7 +2231,7 @@ class Phonopy():
     def read_structure(cls, file):
         """
         Read geometry from `Phonopy <https://phonopy.github.io/phonopy/>`_
-        band.yaml, phonopy.yaml or phonopy_disp.yaml files.
+        band.yaml, mesh.yaml, phonopy.yaml or phonopy_disp.yaml files.
 
         Args:
             file (str): Phonopy yaml file
@@ -2218,7 +2257,11 @@ class Phonopy():
             try:
                 len_unit = data['physical_unit']['length']
             except KeyError:
-                raise Exception("Unknown file format. Only 'band.yaml', 'phonopy.yaml' or 'phonopy_disp.yaml' are allowed.")
+                try:
+                    _ = data['mesh']
+                    len_unit = 'angstrom'
+                except KeyError:
+                    raise Exception("Unknown file format. Only 'band.yaml', 'mesh.yaml', 'phonopy.yaml' or 'phonopy_disp.yaml' are allowed.")
 
         if len_unit == 'angstrom':
             unit_len = 1.0
@@ -2230,7 +2273,7 @@ class Phonopy():
         # Get structure
         spec = []
         coord = []
-        try: # band.yaml
+        try: # band.yaml / mesh.yaml
             latt = np.array(data['lattice'], dtype=float) * unit_len
             for idx_a, atom in enumerate(data['points']):
                 spec.append(atom['symbol'])
@@ -2653,8 +2696,8 @@ class Output():
         file = open(qha.filename, 'a+')
         file.write('%s\n' % '# QHA THERMODYNAMIC PROPERTIES - EOS FIT')
         file.write('%s\n\n' % '  Thermodynamic properties obtained by overall fitting of equation of states.')
-        file.write('%s%s\n' % ('## EQUATION OF STATES: ', qha.fe_eos_method))
-        file.write('%s%i\n' % ('## G(T) POLYNOMIAL ORDER: ', qha.fit_order))
+        file.write('%s%s\n' % ('## EQUATION OF STATES: ', qha.eos_method))
+        # file.write('%s%i\n' % ('## G(T) POLYNOMIAL ORDER: ', qha.fit_order)) # that only saves the last polynomial's order.
         file.write('%s\n' %
                    '  WARNING: Entropy at low temperature is probably inaccurate due to the poor fitting of G(T) near 0K.')
         for idx_p, press in enumerate(qha.pressure):

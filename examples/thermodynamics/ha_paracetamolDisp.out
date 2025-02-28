@@ -1,43 +1,3 @@
-Pre-Calc Summary
---------------------------------------------
-  date:                Tue 27 Jun 18:11:54 BST 2023
-  hostname:            nhpc101
-  system:              Linux nhpc101 5.3.18-150300.59.76-default #1 SMP Thu Jun 16 04:23:47 UTC 2022 (2cc2ade) x86_64 x86_64 x86_64 GNU/Linux
-  user:                huanyu
-  input:               /home/huanyu/Desktop/PDOS/PDOS-PBEh3C.d12
-  output:              /home/huanyu/Desktop/PDOS/PDOS-PBEh3C.out
-  temporary directory: /home/huanyu/Desktop/PDOS/PDOS-PBEh3C_tmpfile
-  executable script:   /home/huanyu/GitHub/Spica-Vir/crystal_shape_control/NHPC101-Job-Submission/run_job
-  executable dir:      module load CRYSTAL/23v1-intel
-  mpi + exe command:   mpiexec -np 4 Pcrystal
--------------------------------------------
-
-Find input data: /home/huanyu/Desktop/PDOS/PDOS-PBEh3C.d12
-Find input data: /home/huanyu/Desktop/PDOS/PDOS-PBEh3C.gui
-Find input reference: /home/huanyu/Desktop/PDOS/Gfreqr0-PBEH3C.FREQINFO
-Find input reference: /home/huanyu/Desktop/PDOS/Gfreqr0-PBEH3C.freqtsk/FREQINFO.DAT.tsk0
-Find input reference: /home/huanyu/Desktop/PDOS/Gfreqr0-PBEH3C.freqtsk/FREQINFO.DAT.tsk1
-Find input reference: /home/huanyu/Desktop/PDOS/Gfreqr0-PBEH3C.freqtsk/FREQINFO.DAT.tsk2
-Find input reference: /home/huanyu/Desktop/PDOS/Gfreqr0-PBEH3C.freqtsk/FREQINFO.DAT.tsk3
-Find input reference: /home/huanyu/Desktop/PDOS/Gfreqr0-PBEH3C.f13
-All files are synchonised.
-
-Job Ready to Go
--------------------------------------------
-  Job name       : PDOS-PBEh3C
-  Command        : mpiexec -np 4 Pcrystal >> /home/huanyu/Desktop/PDOS/PDOS-PBEh3C.out 2>&1
-  Temporary dir  : /home/huanyu/Desktop/PDOS/PDOS-PBEh3C_tmpfile
-  List of files  : total 107988
--rw-r--r-- 1 huanyu users 18141000 Jun 27 18:11 fort.13
--rw-r--r-- 1 huanyu users     6514 Jun 27 18:11 fort.34
--rw-r--r-- 1 huanyu users 19459466 Jun 27 18:11 FREQINFO.DAT
--rw-r--r-- 1 huanyu users 18235466 Jun 27 18:11 FREQINFO.DAT.tsk0
--rw-r--r-- 1 huanyu users 18235466 Jun 27 18:11 FREQINFO.DAT.tsk1
--rw-r--r-- 1 huanyu users 18235466 Jun 27 18:11 FREQINFO.DAT.tsk2
--rw-r--r-- 1 huanyu users 18235466 Jun 27 18:11 FREQINFO.DAT.tsk3
--rw-r--r-- 1 huanyu users      376 Jun 27 18:11 INPUT
--rw-r--r-- 1 huanyu users     7554 Jun 27 18:11 Job_script_PDOS-PBEh3C
-  Input script   :
 Form1 paracetamol PDOS Step r0 - PBEH3CBJ/PBEh-3C
 EXTERNAL
 SCELPHONO
@@ -58949,32 +58909,4 @@ NODE    1 CPU TIME =        45.101
 NODE    2 CPU TIME =        45.104
 NODE    3 CPU TIME =        45.101
     TOTAL CPU TIME =       180.360
-Warning! Duplicate file detected in out directory: /home/huanyu/Desktop/PDOS/PDOS-PBEh3C.gui.
-  The file will be covered by the new entry /home/huanyu/Desktop/PDOS/PDOS-PBEh3C_tmpfile/fort.34.
-  fort.34              PDOS-PBEh3C.gui                                       6514     Jun 27 18:11
-  SCFOUT.LOG           PDOS-PBEh3C.SCFLOG                                    58560    Jun 27 18:11
-  FREQINFO.DAT         PDOS-PBEh3C.FREQINFO                                  19459466 Jun 27 18:11
-  FREQINFO.DAT.tsk0    PDOS-PBEh3C.freqtsk/FREQINFO.DAT.tsk0                 18235466 Jun 27 18:11
-  FREQINFO.DAT.tsk1    PDOS-PBEh3C.freqtsk/FREQINFO.DAT.tsk1                 18235466 Jun 27 18:11
-  FREQINFO.DAT.tsk2    PDOS-PBEh3C.freqtsk/FREQINFO.DAT.tsk2                 18235466 Jun 27 18:11
-  FREQINFO.DAT.tsk3    PDOS-PBEh3C.freqtsk/FREQINFO.DAT.tsk3                 18235466 Jun 27 18:11
-  fort.13              PDOS-PBEh3C.f13                                       18141000 Jun 27 18:11
-  fort.25              PDOS-PBEh3C.f25                                       1328     Jun 27 18:12
-  PHONDOS.DAT          PDOS-PBEh3C.PHONDOS                                   2623     Jun 27 18:12
---------------------------------------------
-
-Temporary Directory Disk Info
---------------------------------------------
-  Temporary directory      : /home/huanyu/Desktop/PDOS/PDOS-PBEh3C_tmpfile
-
-  Disk usage (df -h)
-Filesystem      Size  Used Avail Use% Mounted on
-/dev/sda1       3.7T  133G  3.5T   4% /home
-
-  Usage by folders (du -m)
-108	/home/huanyu/Desktop/PDOS/PDOS-PBEh3C_tmpfile
-
-  Detailed file list (ls -l .)
-    see /home/huanyu/Desktop/PDOS/PDOS-PBEh3C.log file
---------------------------------------------
 
