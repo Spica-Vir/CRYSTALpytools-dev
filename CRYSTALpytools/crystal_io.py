@@ -1315,81 +1315,94 @@ class Crystal_output:
 
     #### Lattice Dynamics ####
 
-    def get_phonon(self, read_eigvt=False, rm_imaginary=True, rm_overlap=True,
-                   imaginary_tol=-1e-4, q_overlap_tol=1e-4, eigvt_amplitude=1.):
+    def get_phonon(self, imaginary_tol=-1e-4, q_overlap_tol=1e-4, eigvec='unsaved',
+                   **kwargs):
         """
-        Read phonon-related properties from output file.
+        Read phonon-related properties from output file. This method was
+        developed as a basic I/O function for phonon vibration and thermodynamic
+        analysis. For phonon band / dos or IR / Raman intensities or spectra,
+        please refer to the ``get_phonon_band``, ``get_phonon_dos`` and
+        ``get_spectra`` methods.
 
         .. note::
 
             In QHA calculations, ``self.nqpoint`` refer to harmonic phonons
-            computed. In other cases it refers to actual q points in reciprocal
-            space.
+            computed at :math:`\\Gamma`, as the current version (CRYSTAL23)
+            supports direct-space approach only.
 
-        .. note::
+        Available eigenvector formats for ``eigvec``:
 
-            This method is developed as a basic I/O function for thermodynamic
-            analysis. For phonon band / dos or IR / Raman spectra, please refer
-            to the ``get_phonon_band``, ``get_phonon_dos`` and ``get_spectra``
-            methods.
+        * 'unsaved', Do not save eigenvector.  
+        * 'original', Mass-weighted phased eigenvectors normalized to 1, , i.e.,
+           eigenvectors from diagonalizing dynamic matrices.  
+        * 'classical'，Mass-weighted phased eigenvectors normalized to classical
+           amplitude in :math:`\\AA`.  
+        * 'mass unweight', Mass-unweighted phased eigenvectors normalized to 1.
 
         Args:
-            read_eigvt (bool): Whether to read phonon eigenvectors and
-                normalize it to 1.
-            rm_imaginary (bool): Set negative frequencies to 0 and remove all
-                the related properties. Only eigenvectors are kept.
-            rm_overlap (bool): *For dispersion calculations* Remove repeated q
-                points and recalculate their weights.
-            imaginary_tol (float): *``rm_imaginary`` = True only* The threshold
-                of negative frequencies.
-            q_overlap_tol (float): *``rm_overlap`` = True only* The threshold of
-                overlapping q points, defined as the 2nd norm of the difference
-                of fractional q vectors
-            eigvt_amplitude (float|str): Normalize the eigenvector to a certian
-                amplitude. Either a number or 'classical' (**classical
-                amplitude in Bohr**).
+            imaginary_tol (float): The threshold of negative frequencies to
+                remove. 'None' for keeping the original data.
+            q_overlap_tol (float): The threshold of overlapped q points to remove,
+                defined as the 2nd norm of the difference of fractional q vectors.
+                'None' for keeping the original data.
+            eigvec (str): Eigenvectors saved. 'unsaved', 'original', 'classical',
+                'mass unweight'. See above.
+            \*\*kwargs: Developers only. See below.
+            read_spec (bool): Read spectra information at Gamma. Extra 1\*nmode
+                arrays of 'IR', 'intens' and 'Raman' are returned.
+            read_eigvt : Deprecated. Use ``eigvec`` instead.
+            eigvt_amplitude: Deprecated. Use ``eigvec`` instead.
+            rm_imaginary: Deprecated. Use ``imaginary_tol`` instead.
+            rm_overlap: Deprecated. Use ``q_overlap_tol=None`` instead.
 
         Returns:
             self (Crystal_output): New attributes listed below
+            self.phonon (Phonon): ``phonons.Phonon`` object. In practice calling
+                this attribute is suggested. The followings are for compatbility.
             self.edft (array[float]): :math:`E_{0}` Energy with empirical
                 correction. Unit: kJ/mol.
             self.nqpoint (int): Number of q points
-            self.qpoint (list[list[array[float], float]]): A 1\*nQpoint list of
-                1\*2 list whose first element is a 1\*3 array of fractional
-                coordinates and the second is its weight.
-            self.nmode (array[int]): Number of modes at q point. 1\*nQpoint
-                array.
+            self.qpoint (array[floaat): nQpoint\*4 array. The first three
+                elements are fractional coordinates and the last is weight, i.e.,
+                number of equivalent q points.
+            self.nmode (int): Number of modes at q point.
             self.frequency (array[float]): nQpoint\*nMode array ofvibrational
                 frequency. Unit: THz
             self.mode_symm (array[str]): nQpoint\*nMode array of the
                 irreducible representations. In Mulliken symbols.
-            self.intens (array[float]): nqpoint\*nmode array of harmonic IR
-                intensiy. Unit: km/mol
-            self.IR (array[bool]): nqpoint\*nmode array of boolean values
-                specifying whether the mode is IR active
-            self.Raman (array[bool]): nqpoint\*nmode array of boolean values
-                specifying whether the mode is Raman active
             self.eigenvector (array[complex]): *``read_eigvt = True only``*
                 nqpoint\*nmode\*natom\*3 array of eigenvectors.
         """
         import re
-        import numpy as np
         import pandas as pd
-        from CRYSTALpytools.base.output import PhononBASE
-        from CRYSTALpytools.units import H_to_kjmol
+        from CRYSTALpytools.phonons import Phonon
 
         is_freq = False
         found_anti = True
-        self.edft = []
-        self.nqpoint = 0
-        self.qpoint = []
-        self.nmode = []
-        self.frequency = []
-        self.mode_symm = []
-        self.intens = []
-        self.IR = []
-        self.Raman = []
-        self.eigenvector = []
+        read_spec = False
+        scale = 1. # scale is for compatibility only
+        edft = []
+        nqpoint = 0
+        qpoint = []
+        nmode = []
+        frequency = []
+        mode_symm = []
+        eigenvector = []
+
+        # Developer and deprecated arguments:
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k == 'rm_imaginary' and v == False: imaginary_tol = None; continue
+            if k == 'rm_overlap' and v == False: q_overlap_tol = None; continue
+            if k == 'read_eigvt':
+                if v == False: eigvec = 'unsaved'; continue
+                elif v == 'classical': eigvec = 'classical'; continue
+                else: eigvec = 'original'; scale=v; continue
+            if 'read_spec' in kwargs:
+                read_spec = True
+                save_spec = False # flag for gamma point
+                intens = []
+                IR = []
+                Raman = []
 
         # Whether is a frequency file
         title = self.df[self.df[0].str.contains(
@@ -1398,27 +1411,32 @@ class Crystal_output:
 
         # E_0 with empirical corrections
         edft_idx = self.df[self.df[0].str.contains(r'^\s+CENTRAL POINT')].index
-        self.edft = [
-            i[2] for i in self.df[0][edft_idx].map(lambda x: x.strip().split()).tolist()
-        ]
-        self.edft = H_to_kjmol(np.array(self.edft, dtype=float))
+        edft = [i[2] for i in self.df[0][edft_idx].map(lambda x: x.strip().split()).tolist()]
+        edft = units.H_to_eV(np.array(edft, dtype=float))
+
+        # Geometry: Reduce SCELPHONO for dispersions. Not for Gamma point.
+        band_title = self.df[self.df[0].str.contains(r'^\s*\*\s+LIST OF THE K POINTS USED FO[F,R] PHONON DISPERSION\.\s+\*\s*$')].index
+        scelphono = self.df[self.df[0].str.contains(r'\s*\*+\s+ATOMS IN THE SUPERCELL REORDERED FOR PHONON CALCULATION\s*$')].index
+        if len(scelphono) > 0 and len(band_title) > 0:
+            struc = self.get_primitive_geometry(initial=False)
+            sstruc = self.get_geometry(initial=False)
+            edft /= sstruc.num_sites / struc.num_sites; del sstruc
+        else:
+            struc = self.get_geometry(initial=False)
 
         # Q point info + frequency
-        ## Note: Not only for phonon band. also for 'DISPERSI' keyword and SCF k grid
-        band_title = self.df[self.df[0].str.contains(r'^\s*\*\s+LIST OF THE K POINTS USED FOF PHONON DISPERSION\.\s+\*\s*$')].index
         empty_line = self.df[self.df[0].map(lambda x: x.strip() == '')].index.to_numpy(dtype=int)
         if len(band_title) > 0:
             ## Dispersion q point info
             kheader = self.df[self.df[0].str.contains(r'^\s*\*\s+K\s+WEIGHT\s+COORD\s+\*\s*$')].index[0]
             kend = self.df[self.df[0].str.contains(r'^\s*\*\s+WITH SHRINKING FACTORS: IS1 =\s+[0-9]+')].index[0]
-            self.nqpoint = int(kend - kheader - 1)
+            nqpoint = int(kend - kheader - 1)
             qpoint = np.array(self.df[0][kheader+1:kend].map(lambda x: x.strip().split()[1:-1]).tolist(),
                               dtype=float)
             is1 = float(self.df[0][kend].strip().split()[6])
             is2 = float(self.df[0][kend].strip().split()[9])
             is3 = float(self.df[0][kend].strip().split()[12])
-            self.qpoint = [[np.array([i[2]/is1, i[3]/is2, i[4]/is3]), i[1]] for i in qpoint]
-            del qpoint
+            qpoint = [[i[2]/is1, i[3]/is2, i[4]/is3, i[1]] for i in qpoint]
             freq_header = self.df[self.df[0].str.contains(r'\s+DISPERSION K POINT NUMBER')].index
             # Generate list for IRREP symbols
             IRREP = []
@@ -1431,85 +1449,155 @@ class Crystal_output:
                 IRREP = np.unique(np.array(IRREP))
         else:
             ## Gamma point / Gamma point QHA.
-            self.nqpoint = len(self.edft)
-            self.qpoint = [[np.zeros([3,], dtype=float), 1.0] for i in range(self.nqpoint)]
+            nqpoint = len(edft)
+            qpoint = [[0., 0., 0., 1.0] for i in range(nqpoint)]
             ## frequency
             freq_header = self.df[self.df[0].str.contains(r'^\s+MODES\s+EIGV\s+FREQUENCIES\s+')].index
             IRREP = []
+        qpoint = np.array(qpoint)
 
         # Frequency
         for bg in freq_header:
             ed = empty_line[np.where(empty_line>=bg+2)[0][0]]
             dfmini = self.df[0][bg:ed]
-            block_info = dfmini[dfmini.str.contains(r'^\s*[0-9]+\-\s+')]
+            block = dfmini[dfmini.str.contains(r'^\s*[0-9]+\-\s+')]
             idx = 0; empty = empty_line[np.where(empty_line>=ed)[0]]
-            while len(block_info) == 0:
+            while len(block) == 0:
                 ed = empty[idx]
                 dfmini = self.df[0][bg:ed]
-                block_info = dfmini[dfmini.str.contains(r'^\s*[0-9]+\-\s+')]
+                block = dfmini[dfmini.str.contains(r'^\s*[0-9]+\-\s+')]
                 idx += 1
-            phonon = PhononBASE.readmode_basic(block_info, IRREP)
-            self.frequency.append(phonon[0])
-            self.nmode.append(len(phonon[0]))
-            if len(phonon[1]) != 0: self.mode_symm.append(phonon[1])
-            if len(phonon[2]) != 0: self.intens.append(phonon[2])
-            if len(phonon[3]) != 0: self.IR.append(phonon[3])
-            if len(phonon[4]) != 0: self.Raman.append(phonon[4])
+
+            mode1 = block.map(lambda x: x[0:5]).to_numpy(dtype=int)
+            mode2 = block.map(lambda x: x[6:10]).to_numpy(dtype=int)
+            # in cm-1 for more decimal places
+            freq_tmp = block.map(lambda x: x[24:36]).to_numpy(dtype=float)
+            symm_tmp = block.map(lambda x: x[49:52].strip()).tolist()
+            # for phonon dispersions, convert indices into symbols
+            if len(re.findall(r'[A-Z,a-z]', symm_tmp[0])) == 0:
+                symm_tmp = [IRREP[int(i)-1] for i in symm_tmp]
+            if read_spec == True:
+                if 'I' in data[data.index[0]] or 'A' in data[data.index[0]]:
+                    save_spec = True
+                    intens_tmp = data.map(lambda x: x[59:68]).to_numpy(dtype=float)
+                    IR_tmp = data.map(lambda x: x[56]=='A').to_numpy(dtype=bool)
+                    Raman_tmp = data.map(lambda x: x[73]=='A').to_numpy(dtype=bool)
+            # repeat
+            freq = []; symm=[]
+            count = 0
+            for m1, m2 in zip(mode1, mode2):
+                freq.append(freq_tmp[count])
+                symm.append(symm_tmp[count])
+                for i in range(m1, m2):
+                    freq.append(freq_tmp[count])
+                    symm.append(symm_tmp[count])
+                ## Raman and IR
+                if read_spec == True and save_spec == True:
+                    intens.append(intens_tmp[count])
+                    IR.append(IR_tmp[count])
+                    Raman.append(Raman_tmp[count])
+                    for i in range(m1, m2):
+                        intens.append(intens_tmp[count])
+                        IR.append(IR_tmp[count])
+                        Raman.append(Raman_tmp[count])
+                count += 1
+            # cm to thz
+            freq = units.cm_to_thz(np.array(freq, dtype=float))
+            symm = np.array([i for i in symm])
+            if read_spec == True and save_spec == True:
+                intens = np.array(intens, dtype=float)
+                IR = np.array(IR, dtype=bool)
+                Raman = np.array(Raman, dtype=bool)
+                save_spec == False
+            frequency.append(freq)
+            mode_symm.append(symm)
+
+        frequency = np.array(frequency, dtype=float)
+        mode_symm = np.array(mode_symm, dtype=str)
+        nmode = frequency.shape[1]
 
         ## eigenvector
-        if read_eigvt == True:
+        if eigvec != 'unsaved':
             eigvt_header = self.df[self.df[0].str.contains(r'^\s*NORMAL MODES NORMALIZED TO')].index.tolist()
             eigvt_header += self.df[self.df[0].str.contains(r'^\s*MODES IN PHASE')].index.tolist()
             eigvt_header = np.sort(np.array(eigvt_header, dtype=int))
 
-            if len(band_title) > 0:
+            if len(band_title) > 0: # DISP
                 eigvt_end = freq_header.tolist()[1:]
                 eigvt_end.append(self.eoo)
-            else:
-                if self.nqpoint == 1: # Gamma frequency
+            else: # Gamma frequency
+                if nqpoint == 1:
                     eigvt_end = [self.eoo]
-                else:
+                else: # QHA
                     dftitle = self.df[self.df[0].str.contains(r'\s*\*\s+CELL DEFORMATION\s*$')].index
                     eigvt_end = dftitle.tolist()[1:] + [self.eoo]
 
             countblock = 0
             for bg, ed in zip(eigvt_header, eigvt_end):
                 dfmini = self.df[0][bg:ed]
-                self.eigenvector.append(
-                    PhononBASE.readmode_eigenvector(dfmini, self.nmode[countblock])
-                )
-                countblock += 1
+                img = dfmini[dfmini.str.contains(r'MODES IN ANTI\-PHASE')].index
+                dfmini = dfmini[dfmini.str.contains(r'[X,Y,Z]\s+\-*[0-9]\.')]
+                nlines = len(dfmini)
+                if len(img) == 1: # complex
+                    rvt = dfmini[0:int(nlines/2)].map(lambda x: x[13:].strip().split()).tolist()
+                    ivt = dfmini[int(nlines/2):].map(lambda x: x[13:].strip().split()).tolist()
+                else: # real
+                    rvt = dfmini.map(lambda x: x[13:].strip().split()).tolist()
+                    ivt = []
 
-        self.frequency = np.array(self.frequency)
-        self.nmode = np.array(self.nmode, dtype=int)
-        if len(self.mode_symm) != 0: self.mode_symm = np.array(self.mode_symm)
-        if len(self.intens) != 0: self.intens = np.array(self.intens, dtype=float)
-        if len(self.IR) != 0: self.IR = np.array(self.IR, dtype=bool)
-        if len(self.Raman) != 0: self.Raman = np.array(self.Raman, dtype=bool)
+                nblock = int(np.ceil(nmode / 6))
+                nline = int(len(rvt) / nblock) # nline per block of 6 modes
 
-        if self.eigenvector != []:
-            self.eigenvector = np.array(self.eigenvector)
-            # already normalised to classical amplitude
-            if str(eigvt_amplitude).lower() == 'classical':
-                pass
-            # remove classical amplitude
-            # elif str(eigvt_amplitude).lower() == 'classical-rev':
-            #     struc = self.get_geometry(initial=False, write_gui=False)
-            # To a specific value
-            else:
-                for idx_q in range(self.nqpoint):
-                    self.eigenvector[idx_q] = PhononBASE.normalize_eigenvector(
-                        self.eigenvector[idx_q],
-                        amplitude=float(eigvt_amplitude),
+                rvttmp = np.array(rvt[0:nline], dtype=float)
+                for i in range(1, nblock):
+                    rvttmp = np.hstack(
+                        [rvttmp, np.array(rvt[int(nline*i):int(nline*(i+1))], dtype=float)]
                     )
+                rvttmp = rvttmp.T.reshape([nmode, int(nline/3), 3], order='C')
 
-        if rm_imaginary == True:
-            self = PhononBASE.clean_imaginary(self, threshold=imaginary_tol)
+                if len(ivt) != 0:
+                    ivttmp = np.array(ivt[0:nline], dtype=float)
+                    for i in range(1, nblock):
+                        ivttmp = np.hstack(
+                            [ivttmp, np.array(ivt[int(nline*i):int(nline*(i+1))], dtype=float)]
+                        )
+                    ivttmp = ivttmp.T.reshape([nmode, int(nline/3), 3], order='C')
+                    eigvt = rvttmp + ivttmp * 1j
+                else:
+                    eigvt = rvttmp + 0j
+                countblock += 1
+                eigenvector.append(eigvt)
+            ## Remove classical amplitude
+            eigenvector = units.au_to_angstrom(np.array(eigenvector))
+            eigenvector = Phonon.get_eigvec(struc, frequency, eigenvector, 'remove classical')
+        else:
+            eigenvector = np.array([])
 
-        if rm_overlap == True and self.nqpoint > 1:
-            self = PhononBASE.clean_q_overlap(self, threshold=q_overlap_tol)
+        if len(edft) == 1: edft = edft[0]
+        self.phonon = Phonon(struc, edft, qpoint, frequency, mode_symm, eigenvector)
+        if imaginary_tol != None:
+            self.phonon.clean_imaginary(threshold=imaginary_tol)
+        if q_overlap_tol != None:
+            self.phonon.clean_q_overlap(threshold=q_overlap_tol)
 
-        return self
+        self.edft = units.H_to_kjmol(units.eV_to_H(self.phonon.u_0))
+        self.nqpoint = self.phonon.nqpoint
+        self.qpoint = self.phonon.qpoint
+        self.nmode = self.phonon.nmode
+        self.frequency = self.phonon.frequency
+        self.mode_symm = self.phonon.mode_symm
+        if eigvec == 'original':
+            self.eigenvector = self.phonon.eigenvector * scale
+        elif eigvec == 'classical':
+            self.eigenvector = self.phonon.classical_eigvec()
+        elif eigvec == 'mass unweight':
+            self.eigenvector = self.phonon.unweight_eigvec() * scale
+        elif eigvec == 'unsaved':
+            self.eigenvector = self.phonon.eigenvector
+        if read_spec == True:
+            return self, intens, IR, Raman
+        else:
+            return self
 
     def get_phonon_band(self, q_overlap_tol=1e-4):
         """
@@ -2729,11 +2817,11 @@ class Properties_output(POutBASE):
 
     def read_topond(self, topondfile, type='infer'):
         """
-        Read the 2D scalar plot files ('SURF*.DAT') or trajectory files
-        (TRAJ*.DAT) written by `TOPOND <https://www.crystal.unito.it/topond.html>`_.
+        Read the 2D scalar plot files ('SURF\*.DAT') or trajectory files
+        (TRAJ\*.DAT) written by `TOPOND <https://www.crystal.unito.it/topond.html>`_.
 
         Geometry information is printed in the standard ouput, which is not
-        mandatory for 'SURF*.DAT' but is mandatory for 'TRAJ*.DAT'
+        mandatory for 'SURF\*.DAT' but is mandatory for 'TRAJ\*.DAT'
 
         .. note::
 
