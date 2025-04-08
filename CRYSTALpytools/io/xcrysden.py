@@ -79,6 +79,7 @@ class XSF():
         df = pd.DataFrame(open(filename, 'r'))
         # remove empty lines and comments
         df = df.replace(r'^\s*#*\s*$', np.nan, regex=True).dropna()
+        df.reset_index(drop=True, inplace=True)
         # geometry keyword
         if len(df[df[0].str.contains(r'^\s*ATOMS\s*$')].index) == 1:
             ndim = 0; read_cell = False
@@ -153,7 +154,7 @@ class XSF():
             ).tolist()
             gdata = np.array(gdata, dtype=float).flatten()
             if ndata % nperline != 0:
-                lastl = df[0].loc[egrd-1].strip().split().tolist()
+                lastl = df[0].loc[egrd-1].strip().split()
                 gdata = np.hstack([gdata, np.array(lastl, dtype=float)])
             gdata = gdata.reshape(gsize[::-1])
         else:
@@ -300,7 +301,7 @@ class XSF():
                 last_line = ''
                 for i in range(grid.shape[0]-left, grid.shape[0]):
                     footer += '%15.6e' % grid[i]
-                    footer += '\n'
+                footer += '\n'
             footer += '   %s_%s\n' % ('END_DATAGRID_2D', grid_name)
             footer += ' %s\n' % 'END_BLOCK_DATAGRID_2D'
             grid = grid[:grid.shape[0]-left].reshape([-1, 5], order='C')
