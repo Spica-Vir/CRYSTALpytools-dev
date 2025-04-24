@@ -554,8 +554,8 @@ class DLVParser():
 
         df = pd.DataFrame(open(filename))
         # remove all the empty lines
-        df[0] = df[0].replace(r'^\s*\n', np.nan, regex=True)
-        df.dropna(inplace=True)
+        df = df.replace(r'^\s*#*\s*$', np.nan, regex=True).dropna()
+        df.reset_index(drop=True, inplace=True)
 
         iband = df[df[0].str.contains(r'^\s*Band\s+[0-9]+\s*$')].index.tolist()
         nband = 0
@@ -737,8 +737,8 @@ class BOLTZTRAParaser():
 
         df = pd.DataFrame(open(filename))
         # remove all the empty lines
-        df[0] = df[0].replace(r'^\s*\n', np.nan, regex=True)
-        df.dropna(inplace=True)
+        df = df.replace(r'^\s*#*\s*$', np.nan, regex=True).dropna()
+        df.reset_index(drop=True, inplace=True)
         spin = int(df[0][0].strip().split()[1]) + 1
         v = float(df[0][2].strip().split()[-1])
         if 'in W/m/K' in df[0][0]:
@@ -811,8 +811,8 @@ class BOLTZTRAParaser():
 
         df = pd.DataFrame(open(filename))
         # remove all the empty lines
-        df[0] = df[0].replace(r'^\s*\n', np.nan, regex=True)
-        df.dropna(inplace=True)
+        df = df.replace(r'^\s*#*\s*$', np.nan, regex=True).dropna()
+        df.reset_index(drop=True, inplace=True)
         spin = int(df[0][0].strip().split()[1]) + 1
         if 'Transport distribution function' not in df[0][0]:
             raise ValueError('Not a TDF file.')

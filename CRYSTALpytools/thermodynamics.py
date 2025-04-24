@@ -1803,6 +1803,8 @@ class Quasi_harmonic:
                 temperature and pressure. Standard conventional cell is used.
             self.latt_params (array): nPress\*nTempt\*nLatt minimal set of
                 lattice parameters. The standard conventional cell is used.
+            self.latt_cart (array): nPress\*nTempt\*3 projected lengths of cell
+                on Cartesian coordinates. The standard conventional cell is used.
         """
         # Sainity check
         if not hasattr(self, 'volume'):
@@ -1974,6 +1976,24 @@ class Quasi_harmonic:
             return latt
 
 
+    @property
+    def latt_cart(self):
+        """Generate nPress\*nTempt\*3 set of projected lengths of cell on
+        Cartesian coordinates from lattice matrices of the standard conventional
+        cell. Callable only if the equilibrium lattice parametes are fitted."""
+        if not hasattr(self, 'lattice'):
+            raise Exception("Only callable after 'lattice_*()' fittings.")
+        corners = np.array([[i, j, k] for i in [0,1] for j in [0,1] for k in [0,1]])
+        length = np.zeros([self.lattice.shape[0], self.lattice.shape[1], 3])
+        for ip in range(self.lattice.shape[0]):
+            for it in range(self.lattice.shape[1]):
+                cart = corners @ self.lattice[ip, it]
+                length[ip, it, 0] = cart[:, 0].ptp()
+                length[ip, it, 1] = cart[:, 1].ptp()
+                length[ip, it, 2] = cart[:, 2].ptp()
+        return length
+
+
     def expansion_latt(self, poly_order=[2,3], Cartesian=False,
                        plot=True, fit_fig='expansion_latt_{}.png'):
         """
@@ -2031,11 +2051,8 @@ class Quasi_harmonic:
         npress = len(self.pressure); ntempt = len(self.temperature)
         if Cartesian == True:
             nparam = 3
-            L = np.zeros([npress, ntempt, 3])
+            L = self.latt_cart
             dL = np.zeros([npress, ntempt, 3])
-            L[:, :, 0] = np.abs(self.lattice[:,:,0,0] - self.lattice[:,:,1,0] - self.lattice[:,:,2,0])
-            L[:, :, 1] = np.abs(self.lattice[:,:,0,1] - self.lattice[:,:,1,1] - self.lattice[:,:,2,1])
-            L[:, :, 2] = np.abs(self.lattice[:,:,0,2] - self.lattice[:,:,1,2] - self.lattice[:,:,2,2])
             for i in range(ntempt):
                 dL[:, i, :] = L[:, i, :] - L[:, 0, :]
             name = ['x', 'y', 'z']
