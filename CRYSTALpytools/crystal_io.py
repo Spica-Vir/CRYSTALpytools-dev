@@ -1359,12 +1359,13 @@ class Crystal_output:
             self (Crystal_output): New attributes listed below
             self.phonon (Phonon): ``phonons.Phonon`` object. In practice calling
                 this attribute is suggested. The followings are for compatbility.
-            self.edft (array[float]): :math:`E_{0}` Energy with empirical
-                correction. Unit: kJ/mol.
-            self.nqpoint (int): Number of q points
-            self.qpoint (array[floaat): nQpoint\*4 array. The first three
+            self.edft (float|arra): :math:`E_{0}` Energy with empirical
+                corrections. An 1D array for QHA output. Unit: kJ/mol.
+            self.nqpoint (int): Number of q points. For QHA, number of calculations.
+            self.qpoint (array[float): nQpoint\*4 array. The first three
                 elements are fractional coordinates and the last is weight, i.e.,
-                number of equivalent q points.
+                number of equivalent q points. For QHA, \[0, 0, 0, 1\] repeated
+                for nqpoint times.
             self.nmode (int): Number of modes at q point.
             self.frequency (array[float]): nQpoint\*nMode array ofvibrational
                 frequency. Unit: THz
