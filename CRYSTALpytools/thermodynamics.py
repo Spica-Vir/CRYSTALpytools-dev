@@ -614,13 +614,13 @@ class Quasi_harmonic:
                 )
 
         if mode_sort_tol!=None and ha_list[0].eigenvector.shape[-1] != 0:
-            close_overlap = self._combine_data(ha_list, mode_sort_tol=mode_sort_tol)
+            close_overlap, dot_pdt = self._combine_data(ha_list, mode_sort_tol=mode_sort_tol)
         else:
             _ = self._combine_data(ha_list, mode_sort_tol=None)
-            close_overlap = []
+            close_overlap = []; dot_pdt = []
 
         if self.filefmt=='yaml':
-            ThermoQHA.write_combine_data(self, close_overlap)
+            ThermoQHA.write_combine_data(self, close_overlap, dot_pdt)
         elif self.filefmt=='txt':
             ThermoQHA.old_write_combine_data(self, close_overlap)
         return self
@@ -2259,9 +2259,11 @@ class Quasi_harmonic:
             mode_sort_tol (float | None)
 
         Returns:
-            close_overlap (array[float]):ncalc\*nmode\*nmode boolean matrix
-                (only 1 and 0). Whether close overlap is identified between the
-                previous calculation (2nd dimension) and the current one (3rd).
+            close_overlap (array[int]): nQpoint\*nMode_ref\*nCalc*nMode_sort
+                boolean array (only 1 and 0). Whether close overlap is
+                identified between the n-1 (ref) and the n (sort) calculations.
+            dot_pdt (array[float]): nQpoint\*(nCalc-1) array, dot products between
+                n-1 and n calculations.
             self : Attributes listed below.
             combined_volume (array[float]): 1\*nCalc
             combined_struc (list[CStructure]): 1\*nCalc
@@ -2337,11 +2339,13 @@ class Quasi_harmonic:
 
         ## Sort
         close_overlap = np.zeros([nqpoint, self.ncalc, nmode, nmode], dtype=int)
+        dot_pdt = np.zeros([nqpoint, self.ncalc-1])
         self._mode_sorted = False
         if np.all(mode_sort_tol!=None) and do_eigvt == True:
             self._mode_sorted = True
             for idx_q in range(nqpoint):
-                combined_freq[idx_q], combined_eigvt[idx_q], close_overlap[idx_q] \
+                combined_freq[idx_q], combined_eigvt[idx_q], \
+                close_overlap[idx_q], dot_pdt[idx_q] \
                     = self._phonon_continuity(combined_freq[idx_q],
                                               combined_eigvt[idx_q],
                                               symm=combined_symm[idx_q],
@@ -2372,7 +2376,7 @@ class Quasi_harmonic:
         self.qpoint = qpoint
         self.nmode = nmode
         self.natom = natom
-        return close_overlap
+        return close_overlap, dot_pdt
 
 
     @staticmethod
@@ -2399,6 +2403,8 @@ class Quasi_harmonic:
             close_overlap (array[float]):ncalc\*nmode\*nmode boolean matrix
                 (only 1 and 0). Whether close overlap is identified between the
                 previous calculation (2nd dimension) and the current one (3rd).
+            dot_pdt (array[float]): 1\*(nCalc-1) array, dot products between n-1
+                and n calculations.
         """
         # Exclude negative and 0 frequencies
         ncalc = len(freq)
@@ -2406,6 +2412,7 @@ class Quasi_harmonic:
 
         # Sort phonon
         close_overlap = np.zeros([ncalc, nmode, nmode])
+        dot_pdt = np.zeros([ncalc-1,])
         for sort_c in range(1, ncalc):
             ref_c = sort_c - 1
             ref_eigvt = deepcopy(eigvt[ref_c])
@@ -2455,8 +2462,10 @@ class Quasi_harmonic:
                     if len(clapidx) == 0: continue
                     # from sub-matrix index to matrix index
                     close_overlap[sort_c, row[ic], newcol[clapidx]] = 1
+                # averaged product
+                dot_pdt[ref_c] += pdt[rowidx, newidx].sum()
 
-        return freq, eigvt, close_overlap
+        return freq, eigvt, close_overlap, dot_pdt
 
 
     def _clean_thermoprop(self):

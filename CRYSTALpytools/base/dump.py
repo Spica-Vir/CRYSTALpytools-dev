@@ -262,14 +262,16 @@ class ThermoHA():
 class ThermoQHA():
     """Quasi-harmonic lattice dynamics I/O."""
     @classmethod
-    def write_combine_data(cls, qha, overlap=[]):
+    def write_combine_data(cls, qha, overlap=[], pdt=[]):
         """
         Write combined QHA frequency info to YAML file.
 
         Args:
             qha (Quasi_harmonic): QHA object
-            overlap (array[int]): nqpoint\*nmode_ref\*ncalc\*nmode_sort. Number
-                of close overlaps.
+            overlap (array[int]): nQpoint\*nMode_ref\*nCalc\*nMode_sort. Boolean
+                array of close overlaps.
+            pdt (array[float]): nQpoint\*nCalc Dot products between n-1 and n
+                calculations.
         """
         if os.path.isfile(qha.filename):
             warn("The existing QHA file will be overwritten.", stacklevel=2)
@@ -325,19 +327,22 @@ class ThermoQHA():
         file.write('\n')
         del phonon, qphonon, mode, struc_yaml, entry, points, combine_info
 
-        if len(overlap) == 0:
+        if len(overlap) == 0 or len(pdt) == 0:
             file.close()
             return
 
         file.write("# Close overlaps of phonon modes\n\n")
-        dump({'total_overlap' : int(np.sum(overlap))}, file, sort_keys=False)
+        allinfo = {'total_overlap'        : int(overlap.sum()),
+                   'averaged_dot_product' : float(pdt.sum()/pdt.shape[0]/pdt.shape[1])}
+        dump(allinfo, file, sort_keys=False)
+
         countq = 0; dumpall = []
-        for qpt, qoverlap in zip(qha.qpoint, overlap):
+        for qpt, qoverlap, qpdt in zip(qha.qpoint, overlap, pdt):
             countq += 1
             sort = {'q_rank' : countq,
                     'q_position' : qpt[0:3].tolist(),
-                    'n_overlap' : int(np.sum(qoverlap))}
-
+                    'n_overlap' : int(qoverlap.sum()),
+                    'dot_product' : qpdt.tolist()}
             rmode, scalc, smode = np.where(qoverlap==1)
             close_overlap = [{'ref_calc_rank' : int(scalc[i]),
                               'ref_mode_rank' : int(rmode[i]+1),

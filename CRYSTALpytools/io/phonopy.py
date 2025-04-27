@@ -244,7 +244,7 @@ class YAML():
                 if read_eigvec == True:
                     eigenvector = np.zeros([nqpoint, nmode, natom, 3], dtype=complex)
                     for iq in range(nqpoint):
-                        qpoint[0:3] = data['phonon'][iq]['q-position']
+                        qpoint[iq, 0:3] = data['phonon'][iq]['q-position']
                         if read_weight == True:
                             qpoint[iq, 3] = data['phonon'][iq]['weight']
                         else:
