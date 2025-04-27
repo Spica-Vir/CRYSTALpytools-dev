@@ -2465,7 +2465,7 @@ class Quasi_harmonic:
                 # averaged product
                 dot_pdt[ref_c] += pdt[rowidx, newidx].sum()
 
-        return freq, eigvt, close_overlap, dot_pdt
+        return freq, eigvt, close_overlap, dot_pdt/nmode
 
 
     def _clean_thermoprop(self):
