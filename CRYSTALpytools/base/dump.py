@@ -344,9 +344,9 @@ class ThermoQHA():
                     'n_overlap' : int(qoverlap.sum()),
                     'dot_product' : qpdt.tolist()}
             rmode, scalc, smode = np.where(qoverlap==1)
-            close_overlap = [{'ref_calc_rank' : int(scalc[i]),
+            close_overlap = [{'ref_calc_rank' : int(scalc[i]+1),
                               'ref_mode_rank' : int(rmode[i]+1),
-                              'sort_calc_rank' : int(scalc[i]+1),
+                              'sort_calc_rank' : int(scalc[i]+2),
                               'sort_mode_rank' : int(smode[i]+1)} for i in range(rmode.shape[0])]
             sort['close_overlap'] = close_overlap
             dumpall.append(sort)

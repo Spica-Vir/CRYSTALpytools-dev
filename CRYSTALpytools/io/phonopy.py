@@ -269,20 +269,22 @@ class YAML():
                 natom = struc.num_sites
 
                 qpoint = np.zeros([1, 4], dtype=float) + 1
-                qpoint[0:3] = data['q-position']
+                qpoint[0, 0:3] = data['q-position']
                 frequency = np.zeros([nqpoint, nmode], dtype=float)
                 mode_symm = []
+                eigenvector = np.array([[[[] for i in range(natom)] for j in range(nmode)] for k in range(nqpoint)])
+
                 im = 0
-                for nmode in data['normal_modes']:
-                    neq = len(nmode['band_indices'])
-                    freq = nmode['frequency']
-                    symm = str(nmode['ir_label'])
+                for normode in data['normal_modes']:
+                    neq = len(normode['band_indices'])
+                    freq = normode['frequency']
+                    symm = str(normode['ir_label'])
                     if symm == 'None': symm = ''
                     for i in range(neq):
-                        frequency[im+i] = freq
+                        frequency[0, im+i] = freq
                         mode_symm.append(symm)
                     im += neq
-                mode_symm = np.array(mode_symm, dtype=str)
+                mode_symm = np.array(mode_symm, dtype=str).reshape([nqpoint, nmode])
 
         except KeyError:
             raise Exception("Phonon file: '{}' is broken. Check your input file.".format(phonon))

@@ -130,6 +130,11 @@ class Harmonic():
             qha_index (int): *crystal-QHA*. The index of calculation to read (from 0).
             struc_yaml (str): *phonopy*. 'qpoints.yaml' only.
             u_0 (float): *phonopy*. Static internal energy in kJ/mol.
+            irreps_yaml (array[str]): *phonopy*. Read 'irreps.yaml' for mode
+                symmetry symbols. The fractional coordinates in the file are
+                used for ``q_coord`` if not specified. Phonopy 'irreps.yaml'
+                only contains symmetry info of a q point. Use a list of
+                filenames for multiple q points.
 
         Returns:
             self (Harmonic): Attributes listed below.
@@ -528,6 +533,11 @@ class Quasi_harmonic:
             q_coord (array): Applied to all HA calculations.
             struc_yaml (list[str]): *phonopy*. 'qpoints.yaml' only.
             u_0 (list[float]): *phonopy*. Static internal energy in kJ/mol.
+            irreps_yaml (array[str]): *phonopy*. nCalc\*nQpoint array. Read
+                'irreps.yaml' for mode symmetry symbols. The fractional coordinates
+                in the file are used for ``q_coord`` if not specified. Phonopy
+                'irreps.yaml' only contains symmetry info of a q point. Use a
+                list of filenames for multiple q points.
 
         Returns:
             self (Quasi_harmonic): New Attributes listed below
@@ -574,16 +584,16 @@ class Quasi_harmonic:
 
         # Harmonic input arguments
         accepted_args = ['scale', 'scale_range', 'imaginary_tol', 'q_overlap_tol',
-                         'q_id', 'q_coord', 'struc_yaml', 'u_0']
-        list_args = ['struc_yaml', 'u_0']
+                         'q_id', 'q_coord', 'struc_yaml', 'u_0', 'irreps_yaml']
+        list_args = ['struc_yaml', 'u_0', 'irreps_yaml']
         hainp = dict(source=source)
         for a in kwargs.keys():
             if a in accepted_args:
                 if a in list_args:
-                    array = np.array(kwargs[a])
-                    if array.shape[0] != self.ncalc:
+                    inplist = np.array(kwargs[a])
+                    if inplist.shape[0] != self.ncalc:
                         raise Exception("Input '{}' must have the same dimension as number of calculations.".format(a))
-                    hainp[a] = array
+                    hainp[a] = inplist
                 else:
                     hainp[a] = kwargs[a]
         if mode_sort_tol != None: hainp['read_eigvt'] = True
@@ -609,6 +619,8 @@ class Quasi_harmonic:
                     realinp['u_0'] = hainp['u_0'][ifile]
                 if 'struc_yaml' in hainp.keys():
                     realinp['struc_yaml'] = hainp['struc_yaml'][ifile]
+                if 'irreps_yaml' in hainp.keys():
+                    realinp['irreps_yaml'] = hainp['irreps_yaml'][ifile]
                 ha_list.append(
                     Harmonic(filename=None, autocalc=False).from_file(file, **realinp)
                 )
@@ -2429,6 +2441,8 @@ class Quasi_harmonic:
                 for s in unique_symm:
                     idx_row = np.where(symm[ref_c] == s)[0]
                     idx_col = np.where(symm[sort_c] == s)[0]
+                    if len(idx_row) != len(idx_col):
+                        raise Exception("Inconsistent number of modes with symmetry '{}' between the {:d} and the {:d} calculations.".format(s, ref_c, sort_c))
                     col, row = np.meshgrid(idx_col, idx_row)
                     symm_product.append(mode_product[row, col])
                     irow.append(idx_row)
@@ -2440,30 +2454,40 @@ class Quasi_harmonic:
             del mode_product # save some space
 
             # linear sum assignment of matrices of the same symmetry
+            newidx = np.zeros([2, nmode], dtype=int) # 1st: Old index (sorted col) 2nd: New index (row)
+            overlaps = []
+            countcol = 0
             for pdt, row, col in zip(symm_product, irow, icol):
-                rowidx, newidx = linear_sum_assignment(pdt, maximize=True)
-                # change the sequence of cols
-                freq[sort_c, col] = freq[sort_c, col[newidx]]
-                eigvt[sort_c, col] = eigvt[sort_c, col[newidx]]
-                if len(symm[0]) != 0:
-                    symm[sort_c, col] = symm[sort_c, col[newidx]]
+                rowidx, colidx = linear_sum_assignment(pdt, maximize=True)
+                ncol = len(col)
+                newidx[:, countcol:countcol+ncol] = np.vstack([col[colidx], row])
+                countcol += ncol
 
                 # Very poor overlaps
-                if len(np.where(pdt[rowidx, newidx] < mode_sort_tol)[0]) > 0:
+                if len(np.where(pdt[rowidx, colidx] < mode_sort_tol)[0]) > 0:
                     raise ValueError(
                         'Poor continuity detected between Calc {:d} and Calc {:d}. Min eigenvector product = {:.4f}'.format(
-                            ref_c, sort_c, np.min(pdt[rowidx, newidx])))
-                # close overlaps
-                ## update column index
-                newcol = col[newidx]
-                for ic, c in enumerate(newidx):
-                    dpdt = pdt[ic, c] - pdt[ic, :]
-                    clapidx = np.where((dpdt>0)&(dpdt<mode_sort_tol))[0]
-                    if len(clapidx) == 0: continue
-                    # from sub-matrix index to matrix index
-                    close_overlap[sort_c, row[ic], newcol[clapidx]] = 1
+                            ref_c, sort_c, np.min(pdt[rowidx, colidx])))
+
                 # averaged product
-                dot_pdt[ref_c] += pdt[rowidx, newidx].sum()
+                dot_pdt[ref_c] += pdt[rowidx, colidx].sum()
+
+                # close overlaps
+                pdt[:, rowidx] = pdt[:, colidx]
+                dpdt = -np.subtract(pdt, pdt[rowidx, rowidx].reshape([-1, 1]))
+                claprow, clapcol = np.where((dpdt>0)&(dpdt<mode_sort_tol))
+                if len(claprow) == 0: continue
+                overlaps.append([row[claprow], row[clapcol]]) # 1st: ref mode idx 2nd: Sorted mode idx
+
+            # rearrange the sorted calculation
+            freq[sort_c, newidx[1]] = freq[sort_c, newidx[0]]
+            eigvt[sort_c, newidx[1]] = eigvt[sort_c, newidx[0]]
+            if len(symm[0]) != 0:
+                symm[sort_c, newidx[1]] = symm[sort_c, newidx[0]]
+
+            # close overlaps
+            for o in overlaps:
+                close_overlap[sort_c, o[0], o[1]] = 1
 
         return freq, eigvt, close_overlap, dot_pdt/nmode
 
