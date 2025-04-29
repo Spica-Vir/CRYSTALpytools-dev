@@ -269,7 +269,7 @@ class ThermoQHA():
         Args:
             qha (Quasi_harmonic): QHA object
             overlap (array[int]): nQpoint\*nMode_ref\*nCalc\*nMode_sort. Boolean
-                array of close overlaps.
+                array of close overlaps. The first Calc is useless (always 0).
             pdt (array[float]): nQpoint\*nCalc Dot products between n-1 and n
                 calculations.
         """
@@ -344,9 +344,9 @@ class ThermoQHA():
                     'n_overlap' : int(qoverlap.sum()),
                     'dot_product' : qpdt.tolist()}
             rmode, scalc, smode = np.where(qoverlap==1)
-            close_overlap = [{'ref_calc_rank' : int(scalc[i]+1),
+            close_overlap = [{'ref_calc_rank' : int(scalc[i]),
                               'ref_mode_rank' : int(rmode[i]+1),
-                              'sort_calc_rank' : int(scalc[i]+2),
+                              'sort_calc_rank' : int(scalc[i]+1),
                               'sort_mode_rank' : int(smode[i]+1)} for i in range(rmode.shape[0])]
             sort['close_overlap'] = close_overlap
             dumpall.append(sort)

@@ -468,7 +468,7 @@ class Phonon():
                     if len(idx) < 1:
                         warn("Q point coordinate [{:.2f} {:.2f} {:.2f}] defined in {} not found in {} and is skipped.".format(
                             q[0], q[1], q[2], symm, filename))
-                    for i in idx[0]:
+                    for i in idx:
                         qpts.append(i)
                         mode_symm.append(sobj.mode_symm[i])
             else:
@@ -496,7 +496,7 @@ class Phonon():
                 if len(idx) < 1:
                     warn("Q point coordinate [{:.2f} {:.2f} {:.2f}] not found and is skipped.".format(q[0], q[1], q[2]))
                     continue
-                q_info.append(idx[0][0])
+                q_info += idx
 
             q_info = np.array(q_info, dtype=int)
             obj = cls(obj.structure, obj.u_0, obj.qpoint[q_info],

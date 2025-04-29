@@ -2274,6 +2274,7 @@ class Quasi_harmonic:
             close_overlap (array[int]): nQpoint\*nMode_ref\*nCalc*nMode_sort
                 boolean array (only 1 and 0). Whether close overlap is
                 identified between the n-1 (ref) and the n (sort) calculations.
+                The first Calc is useless (always 0).
             dot_pdt (array[float]): nQpoint\*(nCalc-1) array, dot products between
                 n-1 and n calculations.
             self : Attributes listed below.
