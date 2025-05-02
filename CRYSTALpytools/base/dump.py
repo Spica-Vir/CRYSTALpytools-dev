@@ -76,7 +76,7 @@ class ThermoHA():
                 mode = []
                 for im in range(ha.nmode):
                     mode.append({'rank' : im+1, 'frequency' : ha.frequency[iq, im].tolist(),
-                                 'symmetry' : str(ha.mode_symm[iq, im, 0])})
+                                 'symmetry' : str(ha.mode_symm[iq, im])})
                 qphonon['mode'] = mode
                 phonon.append(qphonon)
         else:
@@ -197,7 +197,7 @@ class ThermoHA():
                         symm_q.append(m['symmetry'])
                     freq.append(freq_q)
                     symm.append(symm_q)
-                freq = np.transpose(np.array(freq, dtype=float), axes=[2, 0, 1]) # nQ*nMode*nSys to nSys*nQ*nMode
+                freq = np.array(freq, dtype=float)
                 symm = np.array(symm, dtype=str)
                 qpoint = np.array(qpoint, dtype=float)
         except KeyError:
@@ -294,6 +294,7 @@ class ThermoQHA():
                         'total_energy' : qha.combined_u0.tolist(),
                         'nqpoint'      : qha.nqpoint,
                         'nmode'        : qha.nmode,
+                        'modes_sorted' : qha._mode_sorted,
                         'structure'    : [],
                         'phonon'       : []}
         struc_yaml = []
@@ -316,7 +317,7 @@ class ThermoQHA():
             mode = []
             for im in range(qha.nmode):
                 mode.append({'rank' : im+1, 'frequency' : qha.combined_freq[iq, im].tolist(),
-                             'symmetry' : str(qha.combined_symm[iq, im, 0])})
+                             'symmetry' : qha.combined_symm[iq, im].tolist()})
             qphonon['mode'] = mode
             phonon.append(qphonon)
         combine_info['phonon'] = phonon
@@ -387,7 +388,7 @@ class ThermoQHA():
             for im in range(qha.nmode):
                 tmpmode = {'rank' : im+1,
                            'frequency' : qha.combined_freq[iq, im].tolist(),
-                           'symmetry'  : str(qha.combined_symm[iq, im, 0]),
+                           'symmetry'  : qha.combined_symm[iq, im].tolist(),
                            'fit_order' : len(qha.freq_fit[iq][im].coef)-1,
                            'fit_coeff' : qha.freq_fit[iq][im].coef.tolist(),
                            'r^2'       : r2tot[iq][im]}
@@ -497,7 +498,7 @@ class ThermoQHA():
             for im in range(qha.nmode):
                 tmpmode = {'rank' : im+1,
                            'frequency' : qha.combined_freq[iq, im].tolist(),
-                           'symmetry'  : str(qha.combined_symm[iq, im, 0]),
+                           'symmetry'  : qha.combined_symm[iq, im].tolist(),
                            'fit_gru'   : float(qha.gru_fit[iq][im]),
                            'r^2'       : r2tot[iq][im]}
                 mode.append(tmpmode)
@@ -957,6 +958,7 @@ class ThermoQHA():
             natom = data['natom']
             edft = data['total_energy']
             nqpoint = data['nqpoint']
+            mode_sorted = data['modes_sorted']
             struc = []
             for s in data['structure']:
                 latt = np.array(s['lattice'], dtype=float)
@@ -977,7 +979,7 @@ class ThermoQHA():
                 freq.append(freq_q)
                 symm.append(symm_q)
             freq = np.transpose(np.array(freq, dtype=float), axes=[2, 0, 1]) # nQ*nMode*nSys to nSys*nQ*nMode
-            symm = np.array(symm, dtype=str)
+            symm = np.transpose(np.array(symm, dtype=str), axes=[2, 0, 1]) # nQ*nMode*nSys to nSys*nQ*nMode
             qpoint = np.array(qpoint, dtype=float)
         except KeyError:
             raise Exception('Basic QHA information missing. File is broken.')
@@ -988,10 +990,11 @@ class ThermoQHA():
         for i in range(qha.ncalc):
             halist.append(
                 Harmonic(filename=None, autocalc=False).from_frequency(
-                    edft[i], qpoint, freq[i], eigvt, symm, structure=struc[i]
+                    edft[i], qpoint, freq[i], eigvt, symm[i], structure=struc[i]
                 )
             )
         _ = qha._combine_data(halist, mode_sort_tol=None)
+        qha._mode_sorted = mode_sorted # Bug fix for sorted dumping files.
 
         # Shared method by thermo_eos / thermo_freq / thermo_gru
         def parameterize_eos(data):

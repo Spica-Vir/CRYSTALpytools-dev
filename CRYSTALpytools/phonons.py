@@ -471,13 +471,14 @@ class Phonon():
                     for i in idx:
                         qpts.append(i)
                         mode_symm.append(sobj.mode_symm[i])
+                del sobj
             else:
                 qpts = [i for i in range(pobj.nqpoint)]
                 mode_symm = pobj.mode_symm
 
             obj = cls(pobj.structure, u_0, pobj.qpoint[qpts], pobj.frequency[qpts],
                       mode_symm=mode_symm, eigenvector=pobj.eigenvector[qpts])
-            del pobj, sobj
+            del pobj
 
         # specific q points
         if np.all(q_id==None) and np.all(q_coord==None):
@@ -637,8 +638,8 @@ class Phonon():
         scale_range = np.array(scale_range, dtype=float, ndmin=2)
         if scale_range.shape[-1] == 0:
             scale_range = np.array([[self.frequency.min(), self.frequency.max()+1.]], dtype=float)
-        scale_range = np.round(scale_range, 8)
-        freq = np.round(self.frequency, 8)
+        scale_range = np.round(scale_range, 10)
+        freq = np.round(self.frequency, 10)
         if scale.shape[0] != scale_range.shape[0]:
             raise Exception("Inconsistent number of scalind factors and scaled frequency range.")
 
