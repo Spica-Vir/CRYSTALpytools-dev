@@ -76,7 +76,7 @@ class ThermoHA():
                 mode = []
                 for im in range(ha.nmode):
                     mode.append({'rank' : im+1, 'frequency' : ha.frequency[iq, im].tolist(),
-                                 'symmetry' : str(ha.mode_symm[iq, im, 0])})
+                                 'symmetry' : str(ha.mode_symm[iq, im])})
                 qphonon['mode'] = mode
                 phonon.append(qphonon)
         else:
@@ -197,7 +197,7 @@ class ThermoHA():
                         symm_q.append(m['symmetry'])
                     freq.append(freq_q)
                     symm.append(symm_q)
-                freq = np.transpose(np.array(freq, dtype=float), axes=[2, 0, 1]) # nQ*nMode*nSys to nSys*nQ*nMode
+                freq = np.array(freq, dtype=float)
                 symm = np.array(symm, dtype=str)
                 qpoint = np.array(qpoint, dtype=float)
         except KeyError:
@@ -262,14 +262,16 @@ class ThermoHA():
 class ThermoQHA():
     """Quasi-harmonic lattice dynamics I/O."""
     @classmethod
-    def write_combine_data(cls, qha, overlap=[]):
+    def write_combine_data(cls, qha, overlap=[], pdt=[]):
         """
         Write combined QHA frequency info to YAML file.
 
         Args:
             qha (Quasi_harmonic): QHA object
-            overlap (array[int]): nqpoint\*nmode_ref\*ncalc\*nmode_sort. Number
-                of close overlaps.
+            overlap (array[int]): nQpoint\*nMode_ref\*nCalc\*nMode_sort. Boolean
+                array of close overlaps. The first Calc is useless (always 0).
+            pdt (array[float]): nQpoint\*nCalc Dot products between n-1 and n
+                calculations.
         """
         if os.path.isfile(qha.filename):
             warn("The existing QHA file will be overwritten.", stacklevel=2)
@@ -292,6 +294,7 @@ class ThermoQHA():
                         'total_energy' : qha.combined_u0.tolist(),
                         'nqpoint'      : qha.nqpoint,
                         'nmode'        : qha.nmode,
+                        'modes_sorted' : qha._mode_sorted,
                         'structure'    : [],
                         'phonon'       : []}
         struc_yaml = []
@@ -314,7 +317,7 @@ class ThermoQHA():
             mode = []
             for im in range(qha.nmode):
                 mode.append({'rank' : im+1, 'frequency' : qha.combined_freq[iq, im].tolist(),
-                             'symmetry' : str(qha.combined_symm[iq, im, 0])})
+                             'symmetry' : qha.combined_symm[iq, im].tolist()})
             qphonon['mode'] = mode
             phonon.append(qphonon)
         combine_info['phonon'] = phonon
@@ -325,19 +328,22 @@ class ThermoQHA():
         file.write('\n')
         del phonon, qphonon, mode, struc_yaml, entry, points, combine_info
 
-        if len(overlap) == 0:
+        if len(overlap) == 0 or len(pdt) == 0:
             file.close()
             return
 
         file.write("# Close overlaps of phonon modes\n\n")
-        dump({'total_overlap' : int(np.sum(overlap))}, file, sort_keys=False)
+        allinfo = {'total_overlap'        : int(overlap.sum()),
+                   'averaged_dot_product' : float(pdt.sum()/pdt.shape[0]/pdt.shape[1])}
+        dump(allinfo, file, sort_keys=False)
+
         countq = 0; dumpall = []
-        for qpt, qoverlap in zip(qha.qpoint, overlap):
+        for qpt, qoverlap, qpdt in zip(qha.qpoint, overlap, pdt):
             countq += 1
             sort = {'q_rank' : countq,
                     'q_position' : qpt[0:3].tolist(),
-                    'n_overlap' : int(np.sum(qoverlap))}
-
+                    'n_overlap' : int(qoverlap.sum()),
+                    'dot_product' : qpdt.tolist()}
             rmode, scalc, smode = np.where(qoverlap==1)
             close_overlap = [{'ref_calc_rank' : int(scalc[i]),
                               'ref_mode_rank' : int(rmode[i]+1),
@@ -382,7 +388,7 @@ class ThermoQHA():
             for im in range(qha.nmode):
                 tmpmode = {'rank' : im+1,
                            'frequency' : qha.combined_freq[iq, im].tolist(),
-                           'symmetry'  : str(qha.combined_symm[iq, im, 0]),
+                           'symmetry'  : qha.combined_symm[iq, im].tolist(),
                            'fit_order' : len(qha.freq_fit[iq][im].coef)-1,
                            'fit_coeff' : qha.freq_fit[iq][im].coef.tolist(),
                            'r^2'       : r2tot[iq][im]}
@@ -492,7 +498,7 @@ class ThermoQHA():
             for im in range(qha.nmode):
                 tmpmode = {'rank' : im+1,
                            'frequency' : qha.combined_freq[iq, im].tolist(),
-                           'symmetry'  : str(qha.combined_symm[iq, im, 0]),
+                           'symmetry'  : qha.combined_symm[iq, im].tolist(),
                            'fit_gru'   : float(qha.gru_fit[iq][im]),
                            'r^2'       : r2tot[iq][im]}
                 mode.append(tmpmode)
@@ -952,6 +958,7 @@ class ThermoQHA():
             natom = data['natom']
             edft = data['total_energy']
             nqpoint = data['nqpoint']
+            mode_sorted = data['modes_sorted']
             struc = []
             for s in data['structure']:
                 latt = np.array(s['lattice'], dtype=float)
@@ -972,7 +979,7 @@ class ThermoQHA():
                 freq.append(freq_q)
                 symm.append(symm_q)
             freq = np.transpose(np.array(freq, dtype=float), axes=[2, 0, 1]) # nQ*nMode*nSys to nSys*nQ*nMode
-            symm = np.array(symm, dtype=str)
+            symm = np.transpose(np.array(symm, dtype=str), axes=[2, 0, 1]) # nQ*nMode*nSys to nSys*nQ*nMode
             qpoint = np.array(qpoint, dtype=float)
         except KeyError:
             raise Exception('Basic QHA information missing. File is broken.')
@@ -983,10 +990,11 @@ class ThermoQHA():
         for i in range(qha.ncalc):
             halist.append(
                 Harmonic(filename=None, autocalc=False).from_frequency(
-                    edft[i], qpoint, freq[i], eigvt, symm, structure=struc[i]
+                    edft[i], qpoint, freq[i], eigvt, symm[i], structure=struc[i]
                 )
             )
         _ = qha._combine_data(halist, mode_sort_tol=None)
+        qha._mode_sorted = mode_sorted # Bug fix for sorted dumping files.
 
         # Shared method by thermo_eos / thermo_freq / thermo_gru
         def parameterize_eos(data):

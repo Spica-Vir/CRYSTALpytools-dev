@@ -3,7 +3,7 @@
 """
 A post-processing module for visualizing and analyzing phonon-related properties.
 """
-from warnings import warn
+from warnings import warn, filterwarnings
 
 import numpy as np
 from scipy import constants
@@ -401,6 +401,11 @@ class Phonon():
             qha_index (int): *crystal-QHA*. The index of calculation to read (from 0).
             struc_yaml (str): *phonopy*. 'qpoints.yaml' only.
             u_0 (float): *phonopy*. Static internal energy in eV.
+            irreps_yaml (array[str]): *phonopy*. Read 'irreps.yaml' for mode 
+                symmetry symbols. The fractional coordinates in the file are
+                used for ``q_coord`` if not specified. Phonopy 'irreps.yaml'
+                only contains symmetry info of a q point. Use a list of
+                filenames for multiple q points.
         """
         from CRYSTALpytools.crystal_io import Crystal_output
         from CRYSTALpytools.io.phonopy import YAML
@@ -450,8 +455,29 @@ class Phonon():
             else:
                 strucfile = filename
             pobj = YAML.read(strucfile, phonon=filename)
-            obj = cls(pobj.structure, u_0, pobj.qpoint, pobj.frequency,
-                      mode_symm=pobj.mode_symm, eigenvector=pobj.eigenvector)
+
+            if 'irreps_yaml' in kwargs.keys():
+                symmfile = np.array(kwargs['irreps_yaml'], dtype=str, ndmin=1)
+                # find the common q points in phonon and symmetry files
+                qpts = []; mode_symm = []
+                filterwarnings("ignore", "Unknown length unit. 'angstrom' is assumed.")
+                for symm in symmfile:
+                    sobj = YAML.read(strucfile, phonon=symm)
+                    dist = np.linalg.norm(np.subtract(pobj.qpoint, sobj.qpoint[0]), axis=1)
+                    idx = np.where(dist<1e-4)[0]
+                    if len(idx) < 1:
+                        warn("Q point coordinate [{:.2f} {:.2f} {:.2f}] defined in {} not found in {} and is skipped.".format(
+                            q[0], q[1], q[2], symm, filename))
+                    for i in idx:
+                        qpts.append(i)
+                        mode_symm.append(sobj.mode_symm[i])
+                del sobj
+            else:
+                qpts = [i for i in range(pobj.nqpoint)]
+                mode_symm = pobj.mode_symm
+
+            obj = cls(pobj.structure, u_0, pobj.qpoint[qpts], pobj.frequency[qpts],
+                      mode_symm=mode_symm, eigenvector=pobj.eigenvector[qpts])
             del pobj
 
         # specific q points
@@ -467,11 +493,11 @@ class Phonon():
             q_info = []
             for q in q_coord:
                 dist = np.linalg.norm(np.subtract(obj.qpoint[:, 0:3], q), axis=1)
-                idx = np.where(dist<1e-4)
+                idx = np.where(dist<1e-4)[0]
                 if len(idx) < 1:
                     warn("Q point coordinate [{:.2f} {:.2f} {:.2f}] not found and is skipped.".format(q[0], q[1], q[2]))
                     continue
-                q_info.append(idx[0][0])
+                q_info += idx
 
             q_info = np.array(q_info, dtype=int)
             obj = cls(obj.structure, obj.u_0, obj.qpoint[q_info],
@@ -612,8 +638,8 @@ class Phonon():
         scale_range = np.array(scale_range, dtype=float, ndmin=2)
         if scale_range.shape[-1] == 0:
             scale_range = np.array([[self.frequency.min(), self.frequency.max()+1.]], dtype=float)
-        scale_range = np.round(scale_range, 8)
-        freq = np.round(self.frequency, 8)
+        scale_range = np.round(scale_range, 10)
+        freq = np.round(self.frequency, 10)
         if scale.shape[0] != scale_range.shape[0]:
             raise Exception("Inconsistent number of scalind factors and scaled frequency range.")
 

@@ -130,6 +130,11 @@ class Harmonic():
             qha_index (int): *crystal-QHA*. The index of calculation to read (from 0).
             struc_yaml (str): *phonopy*. 'qpoints.yaml' only.
             u_0 (float): *phonopy*. Static internal energy in kJ/mol.
+            irreps_yaml (array[str]): *phonopy*. Read 'irreps.yaml' for mode
+                symmetry symbols. The fractional coordinates in the file are
+                used for ``q_coord`` if not specified. Phonopy 'irreps.yaml'
+                only contains symmetry info of a q point. Use a list of
+                filenames for multiple q points.
 
         Returns:
             self (Harmonic): Attributes listed below.
@@ -528,6 +533,11 @@ class Quasi_harmonic:
             q_coord (array): Applied to all HA calculations.
             struc_yaml (list[str]): *phonopy*. 'qpoints.yaml' only.
             u_0 (list[float]): *phonopy*. Static internal energy in kJ/mol.
+            irreps_yaml (array[str]): *phonopy*. nCalc\*nQpoint array. Read
+                'irreps.yaml' for mode symmetry symbols. The fractional coordinates
+                in the file are used for ``q_coord`` if not specified. Phonopy
+                'irreps.yaml' only contains symmetry info of a q point. Use a
+                list of filenames for multiple q points.
 
         Returns:
             self (Quasi_harmonic): New Attributes listed below
@@ -574,16 +584,16 @@ class Quasi_harmonic:
 
         # Harmonic input arguments
         accepted_args = ['scale', 'scale_range', 'imaginary_tol', 'q_overlap_tol',
-                         'q_id', 'q_coord', 'struc_yaml', 'u_0']
-        list_args = ['struc_yaml', 'u_0']
+                         'q_id', 'q_coord', 'struc_yaml', 'u_0', 'irreps_yaml']
+        list_args = ['struc_yaml', 'u_0', 'irreps_yaml']
         hainp = dict(source=source)
         for a in kwargs.keys():
             if a in accepted_args:
                 if a in list_args:
-                    array = np.array(kwargs[a])
-                    if array.shape[0] != self.ncalc:
+                    inplist = np.array(kwargs[a])
+                    if inplist.shape[0] != self.ncalc:
                         raise Exception("Input '{}' must have the same dimension as number of calculations.".format(a))
-                    hainp[a] = array
+                    hainp[a] = inplist
                 else:
                     hainp[a] = kwargs[a]
         if mode_sort_tol != None: hainp['read_eigvt'] = True
@@ -609,18 +619,20 @@ class Quasi_harmonic:
                     realinp['u_0'] = hainp['u_0'][ifile]
                 if 'struc_yaml' in hainp.keys():
                     realinp['struc_yaml'] = hainp['struc_yaml'][ifile]
+                if 'irreps_yaml' in hainp.keys():
+                    realinp['irreps_yaml'] = hainp['irreps_yaml'][ifile]
                 ha_list.append(
                     Harmonic(filename=None, autocalc=False).from_file(file, **realinp)
                 )
 
         if mode_sort_tol!=None and ha_list[0].eigenvector.shape[-1] != 0:
-            close_overlap = self._combine_data(ha_list, mode_sort_tol=mode_sort_tol)
+            close_overlap, dot_pdt = self._combine_data(ha_list, mode_sort_tol=mode_sort_tol)
         else:
             _ = self._combine_data(ha_list, mode_sort_tol=None)
-            close_overlap = []
+            close_overlap = []; dot_pdt = []
 
         if self.filefmt=='yaml':
-            ThermoQHA.write_combine_data(self, close_overlap)
+            ThermoQHA.write_combine_data(self, close_overlap, dot_pdt)
         elif self.filefmt=='txt':
             ThermoQHA.old_write_combine_data(self, close_overlap)
         return self
@@ -1803,6 +1815,8 @@ class Quasi_harmonic:
                 temperature and pressure. Standard conventional cell is used.
             self.latt_params (array): nPress\*nTempt\*nLatt minimal set of
                 lattice parameters. The standard conventional cell is used.
+            self.latt_cart (array): nPress\*nTempt\*3 projected lengths of cell
+                on Cartesian coordinates. The standard conventional cell is used.
         """
         # Sainity check
         if not hasattr(self, 'volume'):
@@ -1974,6 +1988,24 @@ class Quasi_harmonic:
             return latt
 
 
+    @property
+    def latt_cart(self):
+        """Generate nPress\*nTempt\*3 set of projected lengths of cell on
+        Cartesian coordinates from lattice matrices of the standard conventional
+        cell. Callable only if the equilibrium lattice parametes are fitted."""
+        if not hasattr(self, 'lattice'):
+            raise Exception("Only callable after 'lattice_*()' fittings.")
+        corners = np.array([[i, j, k] for i in [0,1] for j in [0,1] for k in [0,1]])
+        length = np.zeros([self.lattice.shape[0], self.lattice.shape[1], 3])
+        for ip in range(self.lattice.shape[0]):
+            for it in range(self.lattice.shape[1]):
+                cart = corners @ self.lattice[ip, it]
+                length[ip, it, 0] = cart[:, 0].ptp()
+                length[ip, it, 1] = cart[:, 1].ptp()
+                length[ip, it, 2] = cart[:, 2].ptp()
+        return length
+
+
     def expansion_latt(self, poly_order=[2,3], Cartesian=False,
                        plot=True, fit_fig='expansion_latt_{}.png'):
         """
@@ -2031,11 +2063,8 @@ class Quasi_harmonic:
         npress = len(self.pressure); ntempt = len(self.temperature)
         if Cartesian == True:
             nparam = 3
-            L = np.zeros([npress, ntempt, 3])
+            L = self.latt_cart
             dL = np.zeros([npress, ntempt, 3])
-            L[:, :, 0] = np.abs(self.lattice[:,:,0,0] - self.lattice[:,:,1,0] - self.lattice[:,:,2,0])
-            L[:, :, 1] = np.abs(self.lattice[:,:,0,1] - self.lattice[:,:,1,1] - self.lattice[:,:,2,1])
-            L[:, :, 2] = np.abs(self.lattice[:,:,0,2] - self.lattice[:,:,1,2] - self.lattice[:,:,2,2])
             for i in range(ntempt):
                 dL[:, i, :] = L[:, i, :] - L[:, 0, :]
             name = ['x', 'y', 'z']
@@ -2242,9 +2271,12 @@ class Quasi_harmonic:
             mode_sort_tol (float | None)
 
         Returns:
-            close_overlap (array[float]):ncalc\*nmode\*nmode boolean matrix
-                (only 1 and 0). Whether close overlap is identified between the
-                previous calculation (2nd dimension) and the current one (3rd).
+            close_overlap (array[int]): nQpoint\*nMode_ref\*nCalc*nMode_sort
+                boolean array (only 1 and 0). Whether close overlap is
+                identified between the n-1 (ref) and the n (sort) calculations.
+                The first Calc is useless (always 0).
+            dot_pdt (array[float]): nQpoint\*(nCalc-1) array, dot products between
+                n-1 and n calculations.
             self : Attributes listed below.
             combined_volume (array[float]): 1\*nCalc
             combined_struc (list[CStructure]): 1\*nCalc
@@ -2320,11 +2352,13 @@ class Quasi_harmonic:
 
         ## Sort
         close_overlap = np.zeros([nqpoint, self.ncalc, nmode, nmode], dtype=int)
+        dot_pdt = np.zeros([nqpoint, self.ncalc-1])
         self._mode_sorted = False
         if np.all(mode_sort_tol!=None) and do_eigvt == True:
             self._mode_sorted = True
             for idx_q in range(nqpoint):
-                combined_freq[idx_q], combined_eigvt[idx_q], close_overlap[idx_q] \
+                combined_freq[idx_q], combined_eigvt[idx_q], \
+                close_overlap[idx_q], dot_pdt[idx_q] \
                     = self._phonon_continuity(combined_freq[idx_q],
                                               combined_eigvt[idx_q],
                                               symm=combined_symm[idx_q],
@@ -2355,7 +2389,7 @@ class Quasi_harmonic:
         self.qpoint = qpoint
         self.nmode = nmode
         self.natom = natom
-        return close_overlap
+        return close_overlap, dot_pdt
 
 
     @staticmethod
@@ -2382,6 +2416,8 @@ class Quasi_harmonic:
             close_overlap (array[float]):ncalc\*nmode\*nmode boolean matrix
                 (only 1 and 0). Whether close overlap is identified between the
                 previous calculation (2nd dimension) and the current one (3rd).
+            dot_pdt (array[float]): 1\*(nCalc-1) array, dot products between n-1
+                and n calculations.
         """
         # Exclude negative and 0 frequencies
         ncalc = len(freq)
@@ -2389,6 +2425,7 @@ class Quasi_harmonic:
 
         # Sort phonon
         close_overlap = np.zeros([ncalc, nmode, nmode])
+        dot_pdt = np.zeros([ncalc-1,])
         for sort_c in range(1, ncalc):
             ref_c = sort_c - 1
             ref_eigvt = deepcopy(eigvt[ref_c])
@@ -2405,6 +2442,8 @@ class Quasi_harmonic:
                 for s in unique_symm:
                     idx_row = np.where(symm[ref_c] == s)[0]
                     idx_col = np.where(symm[sort_c] == s)[0]
+                    if len(idx_row) != len(idx_col):
+                        raise Exception("Inconsistent number of modes with symmetry '{}' between the {:d} and the {:d} calculations.".format(s, ref_c, sort_c))
                     col, row = np.meshgrid(idx_col, idx_row)
                     symm_product.append(mode_product[row, col])
                     irow.append(idx_row)
@@ -2416,30 +2455,42 @@ class Quasi_harmonic:
             del mode_product # save some space
 
             # linear sum assignment of matrices of the same symmetry
+            newidx = np.zeros([2, nmode], dtype=int) # 1st: Old index (sorted col) 2nd: New index (row)
+            overlaps = []
+            countcol = 0
             for pdt, row, col in zip(symm_product, irow, icol):
-                rowidx, newidx = linear_sum_assignment(pdt, maximize=True)
-                # change the sequence of cols
-                freq[sort_c, col] = freq[sort_c, col[newidx]]
-                eigvt[sort_c, col] = eigvt[sort_c, col[newidx]]
-                if len(symm[0]) != 0:
-                    symm[sort_c, col] = symm[sort_c, col[newidx]]
+                rowidx, colidx = linear_sum_assignment(pdt, maximize=True)
+                ncol = len(col)
+                newidx[:, countcol:countcol+ncol] = np.vstack([col[colidx], row])
+                countcol += ncol
 
                 # Very poor overlaps
-                if len(np.where(pdt[rowidx, newidx] < mode_sort_tol)[0]) > 0:
+                if len(np.where(pdt[rowidx, colidx] < mode_sort_tol)[0]) > 0:
                     raise ValueError(
                         'Poor continuity detected between Calc {:d} and Calc {:d}. Min eigenvector product = {:.4f}'.format(
-                            ref_c, sort_c, np.min(pdt[rowidx, newidx])))
-                # close overlaps
-                ## update column index
-                newcol = col[newidx]
-                for ic, c in enumerate(newidx):
-                    dpdt = pdt[ic, c] - pdt[ic, :]
-                    clapidx = np.where((dpdt>0)&(dpdt<mode_sort_tol))[0]
-                    if len(clapidx) == 0: continue
-                    # from sub-matrix index to matrix index
-                    close_overlap[sort_c, row[ic], newcol[clapidx]] = 1
+                            ref_c, sort_c, np.min(pdt[rowidx, colidx])))
 
-        return freq, eigvt, close_overlap
+                # averaged product
+                dot_pdt[ref_c] += pdt[rowidx, colidx].sum()
+
+                # close overlaps
+                pdt[:, rowidx] = pdt[:, colidx]
+                dpdt = -np.subtract(pdt, pdt[rowidx, rowidx].reshape([-1, 1]))
+                claprow, clapcol = np.where((dpdt>0)&(dpdt<mode_sort_tol))
+                if len(claprow) == 0: continue
+                overlaps.append([row[claprow], row[clapcol]]) # 1st: ref mode idx 2nd: Sorted mode idx
+
+            # rearrange the sorted calculation
+            freq[sort_c, newidx[1]] = freq[sort_c, newidx[0]]
+            eigvt[sort_c, newidx[1]] = eigvt[sort_c, newidx[0]]
+            if len(symm[0]) != 0:
+                symm[sort_c, newidx[1]] = symm[sort_c, newidx[0]]
+
+            # close overlaps
+            for o in overlaps:
+                close_overlap[sort_c, o[0], o[1]] = 1
+
+        return freq, eigvt, close_overlap, dot_pdt/nmode
 
 
     def _clean_thermoprop(self):
