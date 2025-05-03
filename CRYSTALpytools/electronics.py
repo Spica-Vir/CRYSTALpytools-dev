@@ -1654,7 +1654,7 @@ class ChargeDensity():
         else: raise ValueError("Unknown option: '{}'.".format(option))
 
         if np.all(isovalue==None):
-            isovalue = (np.max(self.data) - np.min(self.data)) * 0.5 + np.min(self.data)
+            isovalue = (np.max(self.data) + np.min(self.data)) * 0.5
 
         interp = interp.lower()
         if interp not in ['no interp', 'linear', 'nearest', 'slinear', 'cubic']:
@@ -1667,7 +1667,7 @@ class ChargeDensity():
         grid_display_range = np.array(grid_display_range, dtype=float)
         if self.dimension == 2 and len(grid_display_range) > 2:
             if grid_display_range[2, 0] != 0 or grid_display_range[2, 1] != 1:
-                warn("For 2D data grid, a 2x2 display range should be defined.",
+                warn("For 2D data grid, a 2x2 display range should be defined. Using the first two elements.",
                      stacklevel=2)
             grid_display_range = grid_display_range[0:2]
         if len(grid_display_range) != self.dimension:
