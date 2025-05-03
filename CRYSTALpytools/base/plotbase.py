@@ -14,13 +14,6 @@ from copy import deepcopy
 from warnings import warn
 import numpy as np
 
-try:
-    from mayavi import mlab
-    from tvtk.util.ctf import PiecewiseFunction
-    has_mayavi = True
-except ModuleNotFoundError:
-    has_mayavi = False
-
 #--------------------------- 2D plots based on Matplotlib --------------------#
 
 def plot_overlap_bands(ax, bands, k_xax, k_path, k_label, energy_range, k_range,
@@ -1011,7 +1004,9 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
         grid (ImageData|StructuredGrid): vtk grid classes.
     """
     from scipy.interpolate import griddata
-    if has_mayavi == False:
+    try:
+        from tvtk.api import tvtk
+    except ModuleNotFoundError:
         raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
     data = np.array(data, dtype=float)
@@ -1413,9 +1408,11 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
     Returns:
         fig: MayaVi scence object
     """
-    if has_mayavi == False:
+    try:
+        from mayavi import mlab
+        from tvtk.util.ctf import PiecewiseFunction
+    except ModuleNotFoundError:
         raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
-
     #---------------------------------------------------------------------#
     #                                NOTE                                 #
     #---------------------------------------------------------------------#
@@ -1552,9 +1549,10 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
     Returns:
         fig: MayaVi scence object
     """
-    if has_mayavi == False:
+    try:
+        from mayavi import mlab
+    except ModuleNotFoundError:
         raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
-
     #---------------------------------------------------------------------#
     #                                NOTE                                 #
     #---------------------------------------------------------------------#

@@ -8,15 +8,6 @@ import numpy as np
 from yaml import safe_load
 from warnings import warn
 
-try:
-    from phonopy.structure.atoms import PhonopyAtoms
-    from phonopy import Phonopy
-    from phonopy import units as punits
-    from spglib import find_primitive
-    has_phonopy = True
-except ModuleNotFoundError:
-    has_phonopy = False
-
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
 
@@ -59,7 +50,12 @@ class YAML():
         eigenvector (array): nQpoint\*nMode\*nAtom\*3 complex, Mass-weighted and phased, normalized to 1.
     """
     def __init__(self, struc, dim, calculator='crystal', primitive='auto', **kwargs):
-        if has_phonopy == False:
+        try:
+            from phonopy.structure.atoms import PhonopyAtoms
+            from phonopy import Phonopy
+            from phonopy import units as punits
+            from spglib import find_primitive
+        except ModuleNotFoundError:
             raise ModuleNotFoundError("Phonopy is required for this module.")
 
         if not isinstance(struc, Structure):
