@@ -13,8 +13,9 @@ try:
     from phonopy import Phonopy
     from phonopy import units as punits
     from spglib import find_primitive
+    has_phonopy = True
 except ModuleNotFoundError:
-    raise ModuleNotFoundError("Phonopy is required for this module.")
+    has_phonopy = False
 
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
@@ -58,6 +59,9 @@ class YAML():
         eigenvector (array): nQpoint\*nMode\*nAtom\*3 complex, Mass-weighted and phased, normalized to 1.
     """
     def __init__(self, struc, dim, calculator='crystal', primitive='auto', **kwargs):
+        if has_phonopy == False:
+            raise ModuleNotFoundError("Phonopy is required for this module.")
+
         if not isinstance(struc, Structure):
             raise TypeError("A pymatgen Structure or CRYSTALpytools CStructure object must be used.")
 
