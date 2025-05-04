@@ -304,7 +304,7 @@ class Magnetization(VectorField):
         else:
             raise ValueError('Unknown unit.')
 
-        lprops = ['base'] # length units
+        lprops = [] # length units. Note: Base should be commensurate with structure and not updated here.
         mprops = ['data'] # magnetization units
         for l in lprops:
             newattr = getattr(self, l) * lcst
@@ -474,7 +474,7 @@ class OrbitalCurrentDensity(VectorField):
         else:
             raise ValueError('Unknown unit.')
 
-        lprops = ['base'] # length units
+        lprops = [] # length units. Note: Base should be commensurate with structure and not updated here.
         mprops = ['data'] # current density units
         for l in lprops:
             newattr = getattr(self, l) * lcst
@@ -670,7 +670,7 @@ class SpinCurrentDensity(VectorField):
         else:
             raise ValueError('Unknown unit.')
 
-        lprops = ['base'] # length units
+        lprops = [] # length units. Note: Base should be commensurate with structure and not updated here.
         mprops = ['data_x', 'data_y', 'data_z'] # current density units
         for l in lprops:
             newattr = getattr(self, l) * lcst

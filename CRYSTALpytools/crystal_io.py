@@ -2904,6 +2904,7 @@ class Properties_output(POutBASE):
                     # no atom plot currently, though read method is given
                     _, base = super().get_topond_geometry()
                 map = map[:,:,0]
+                base = units.au_to_angstrom(base) # Commensurate with structure.
             else:
                 if not hasattr(self, 'file_name'):
                     raise Exception('Properties output file is mandatory for TOPOND 3D files.')
@@ -2911,8 +2912,7 @@ class Properties_output(POutBASE):
                 _, _, _, _, _, map, unit = CUBEParser.read_cube(topondfile)
                 _, base = super().get_topond_geometry()
                 struc = super().get_geometry()
-
-            base = units.au_to_angstrom(base) # Commensurate with structure.
+                base = units.au_to_angstrom(base) # Commensurate with structure.
 
             # class instantiation
             if type == 'RHOO' or type == 'unknown':
@@ -3048,20 +3048,26 @@ class Properties_output(POutBASE):
         spin, a, b, c, cosxy, struc, map, unit = CrgraParser.mapn(f25_files[0], index)
         # methods
         if len(f25_files) == 1 and len(pato) == 1 and method == 'subtract': # PATO in the same file
-            self.echg = ChargeDensity(map[use_idx], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
-            obj = ChargeDensity(map[1-use_idx], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
+            self.echg = ChargeDensity(map[use_idx],
+                                      units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                      spin, 2, struc[0], unit)
+            obj = ChargeDensity(map[1-use_idx],
+                                units.au_to_angstrom(np.vstack([a[1],b[1],c[1]])),
+                                spin, 2, struc[1], unit)
             self.echg = self.echg.subtract(obj)
             self.echg._set_unit('Angstrom')
-            self.echg.data = self.echg.data[::-1] # base vector use BA rather than AB
         else: # others
             if spin == 1:
-                self.echg = ChargeDensity(map, np.vstack([a,b,c]), 1, 2, struc, unit)
+                self.echg = ChargeDensity(map,
+                                          units.au_to_angstrom(np.vstack([a,b,c])),
+                                          1, 2, struc, unit)
             else:
                 if isinstance(cosxy, float):
                     raise Exception('Broken file: charge / spin density missing for spin polarized systems.')
-                self.echg = ChargeDensity(np.dstack([map[0], map[1]]), np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
+                self.echg = ChargeDensity(np.dstack([map[0], map[1]]),
+                                          units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                          spin, 2, struc[0], unit)
             self.echg._set_unit('Angstrom')
-            self.echg.data = self.echg.data[::-1] # base vector use BA rather than AB
             if method == 'alpha_beta':
                 if len(f25_files) > 1:
                     warnings.warn("The 'alpha_beta' method is used only for a single entry. Nothing is done to other entries.",
@@ -3156,7 +3162,8 @@ class Properties_output(POutBASE):
 
         if method == 'subtract':
             self.ech3 = ChargeDensity(np.expand_dims(data, axis=3),
-                                      [origin, a, b, c], 1, 3, struc=struc, unit='a.u.')
+                                      units.au_to_angstrom(np.vstack([origin, a, b, c])),
+                                      1, 3, struc=struc, unit='a.u.')
             del data, data1
         else:
             spin = len(cubefiles)
@@ -3164,8 +3171,9 @@ class Properties_output(POutBASE):
             datanew[:, :, :, 0] = data; del data
             if spin > 1:
                 datanew[:, :, :, 1] = data1; del data1
-            self.ech3 = ChargeDensity(datanew, [origin, a, b, c], spin, 3,
-                                      struc=struc, unit='a.u.')
+            self.ech3 = ChargeDensity(datanew,
+                                      units.au_to_angstrom(np.vstack([origin, a, b, c])),
+                                      spin, 3, struc=struc, unit='a.u.')
             del datanew
 
         if method == 'alpha_beta':
@@ -3268,27 +3276,25 @@ class Properties_output(POutBASE):
         spin, a, b, c, cosxy, struc, map, unit = CrgraParser.mapn(f25_file, index)
 
         if type == 'DENSITY':
-            obj = ChargeDensity(map, np.vstack([a,b,c]), 1, 2, struc, unit)
-            obj.data = obj.data[::-1] # base vector use BA rather than AB
+            obj = ChargeDensity(map, units.au_to_angstrom(np.vstack([a,b,c])),
+                                1, 2, struc, unit)
             obj._set_unit('Angstrom')
         elif type == 'MAGNETIZ':
             obj = Magnetization(np.dstack([map[0], map[1], map[2]]),
-                                np.vstack([a[0],b[0],c[0]]), 2, struc, unit)
-            obj.data = obj.data[::-1] # base vector use BA rather than AB
+                                units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                2, struc, unit)
             obj._set_unit('SI')
         elif type == 'ORBCURDENS':
             obj = OrbitalCurrentDensity(np.dstack([map[0], map[1], map[2]]),
-                                        np.vstack([a[0],b[0],c[0]]), 2, struc, unit)
-            obj.data = obj.data[::-1] # base vector use BA rather than AB
+                                        units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                        2, struc, unit)
             obj._set_unit('SI')
         elif type == 'SPICURDENS':
             obj = SpinCurrentDensity(np.dstack([map[0], map[1], map[2]]),
                                      np.dstack([map[3], map[4], map[5]]),
                                      np.dstack([map[6], map[7], map[8]]),
-                                     np.vstack([a[0],b[0],c[0]]), 2, struc, unit)
-            obj.data_x = obj.data_x[::-1] # base vector use BA rather than AB
-            obj.data_y = obj.data_y[::-1] # base vector use BA rather than AB
-            obj.data_z = obj.data_z[::-1] # base vector use BA rather than AB
+                                     units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                     2, struc, unit)
             obj._set_unit('SI')
 
         setattr(self, type, obj)

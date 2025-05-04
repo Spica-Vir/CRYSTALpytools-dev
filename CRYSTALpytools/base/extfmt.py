@@ -350,8 +350,10 @@ class CrgraParser():
             # map
             map = df[0][mapn_lines[o][0]+3:mapn_lines[o][1]].str.findall(
                 r'\-?[0-9]\.[0-9]{5}E[+,-][0-9][0-9]').tolist()
-            map = np.array([c for row in map for c in row], dtype=float)
-            all_map.append(map.reshape([points_ab, points_bc, 1], order='F'))
+            map = np.array(
+                [c for row in map for c in row], dtype=float
+            ).reshape([points_ab, points_bc, 1], order='F')
+            all_map.append(map[::-1])  # base vector use BA rather than AB
             # struc
             next_o = o + 1
             # if io + 1 >= len(index):
@@ -544,9 +546,6 @@ class DLVParser():
             bandnew (array): nBand\*nZ\*nY\*nX\*nSpin array of 3D band in Hartree.
             unit (str): 'a.u.'
         """
-        import numpy as np
-        import pandas as pd
-
         df = pd.DataFrame(open(filename))
         # remove all the empty lines
         df = df.replace(r'^\s*#*\s*$', np.nan, regex=True).dropna()
@@ -632,9 +631,6 @@ class TOPONDParser():
                 above. nY\*nX\*1 (spin dimension kept but no use).
             unit (str): 'a.u.'
         """
-        import numpy as np
-        import pandas as pd
-
         file = open(filename, 'r')
         tmp = file.readline()
         tmp = file.readline()
@@ -686,10 +682,6 @@ class TOPONDParser():
                 path.
             unit (str): 'a.u.'
         """
-        import numpy as np
-        import re
-        import pandas as pd
-
         wtraj = []; traj = []
         tab = pd.read_fwf(filename, header=None)
         tab = tab.to_numpy(dtype=float)
@@ -727,9 +719,6 @@ class BOLTZTRAParaser():
             tensor (array): nT\*nMu\*ndimen\*nspin array of tensor elements.
             unit (str): Unit of tensor.
         """
-        import pandas as pd
-        import numpy as np
-
         df = pd.DataFrame(open(filename))
         # remove all the empty lines
         df = df.replace(r'^\s*#*\s*$', np.nan, regex=True).dropna()
@@ -801,9 +790,6 @@ class BOLTZTRAParaser():
             distr (array): nEnergy\*nDimen\*nspin array of distribution. Unit:
                 :math:`\\hbar^{-2}.eV.fs.\\AA^{-2}`.
         """
-        import pandas as pd
-        import numpy as np
-
         df = pd.DataFrame(open(filename))
         # remove all the empty lines
         df = df.replace(r'^\s*#*\s*$', np.nan, regex=True).dropna()
@@ -848,13 +834,13 @@ class CUBEParser():
 
         Returns:
             origin (array): 1\*3 Cartesian coordinates of origin.
-            a (array): 1\*3 Cartesian coordinates of grid x base vector end, in :math:`\\AA`.
-            b (array): 1\*3 Cartesian coordinates of grid y base vector end, in :math:`\\AA`.
-            c (array): 1\*3 Cartesian coordinates of grid z base vector end, in :math:`\\AA`.
+            a (array): 1\*3 Cartesian coordinates of grid x base vector end.
+            b (array): 1\*3 Cartesian coordinates of grid y base vector end.
+            c (array): 1\*3 Cartesian coordinates of grid z base vector end.
             struc (CStructure): Extended Pymatgen Structure object.
             grid (array): nZ\*nY\*nX array of 3D data grid.
-            unit (str): Data grid unit, 'a.u.'. Structure and base vector are
-                not influenced.
+            unit (str): Data grid and base vector unit, 'a.u.'. Structure is not
+                influenced.
         """
         from CRYSTALpytools.geometry import CStructure
         from pymatgen.core.lattice import Lattice
@@ -869,10 +855,10 @@ class CUBEParser():
         gridv = np.array(df[0].loc[2:5].map(lambda x: x.strip().split()).tolist(),
                          dtype=float)
         natom = int(gridv[0, 0])
-        origin = units.au_to_angstrom(gridv[0, 1:])
-        a = units.au_to_angstrom(gridv[1, 1:] * (gridv[1, 0]-1)) + origin
-        b = units.au_to_angstrom(gridv[2, 1:] * (gridv[2, 0]-1)) + origin
-        c = units.au_to_angstrom(gridv[3, 1:] * (gridv[3, 0]-1)) + origin
+        origin = gridv[0, 1:]
+        a = gridv[1, 1:] * (gridv[1, 0]-1) + origin
+        b = gridv[2, 1:] * (gridv[2, 0]-1) + origin
+        c = gridv[3, 1:] * (gridv[3, 0]-1) + origin
         atoms = df[0].loc[6:5+natom].map(lambda x: x.strip().split()).tolist()
         species = np.array([i[0] for i in atoms], dtype=int)
         site_properties = {'charges' : species - np.array([i[1] for i in atoms], dtype=float)}
