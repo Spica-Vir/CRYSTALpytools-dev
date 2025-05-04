@@ -4,6 +4,11 @@
 Classes and methods to parse multiple external output formats by 'crystal' and
 'properties' executables, such as 'BAND.DAT' and 'fort.25' formats.
 """
+from warnings import warn
+import pandas as pd
+import numpy as np
+
+from CRYSTALpytools import units
 
 class CrgraParser():
     """
@@ -30,8 +35,6 @@ class CrgraParser():
             unit (str): 'eV' or 'THz'
         """
         import re
-        import numpy as np
-        from CRYSTALpytools.units import H_to_eV, au_to_angstrom, cm_to_thz
 
         file = open(filename, 'r')
         data = file.readlines()
@@ -109,7 +112,7 @@ class CrgraParser():
             unit = 'THz'
         else:
             is_electron = True
-            efermi = H_to_eV(efermi)
+            efermi = units.H_to_eV(efermi)
             unit = 'eV'
 
         if ihferm % 2 == 0 or is_electron == False:
@@ -137,13 +140,13 @@ class CrgraParser():
         bands = np.reshape(bands, [n_bands, n_kpoints, spin], order='F')
 
         if is_electron == True:
-            bands[:, :, :] = H_to_eV(bands[:, :, :])
+            bands[:, :, :] = units.H_to_eV(bands[:, :, :])
         else:
-            bands[:, :, :] = cm_to_thz(bands[:, :, :])
+            bands[:, :, :] = units.cm_to_thz(bands[:, :, :])
 
         # k coordinates unit. Typically that does not matter
-        tick_pos = au_to_angstrom(np.array(tick_pos, dtype=float))
-        k_path = au_to_angstrom(k_path)
+        tick_pos = units.au_to_angstrom(np.array(tick_pos, dtype=float))
+        k_path = units.au_to_angstrom(k_path)
 
         return spin, tick_pos, tick_label, efermi, bands, k_path, unit
 
@@ -166,8 +169,6 @@ class CrgraParser():
             unit (str): 'eV' or 'THz'
         """
         import re
-        import numpy as np
-        from CRYSTALpytools.units import H_to_eV, cm_to_thz, eV_to_H, thz_to_cm
 
         file = open(filename, 'r')
         data = file.readlines()
@@ -232,7 +233,7 @@ class CrgraParser():
         else:
             spin = 2
             n_proj = int(nblock / 2)
-        efermi = H_to_eV(efermi)
+        efermi = units.H_to_eV(efermi)
 
         doss = np.zeros([n_proj, n_energy, spin], dtype=float)
         for idx_block, block in enumerate(data_in_block):
@@ -247,12 +248,12 @@ class CrgraParser():
 
         # Convert all the energy to eV
         if ftype == 'DOSS':
-            energy = H_to_eV(energy)
-            doss = eV_to_H(doss)  # states/Hartree to states/eV
+            energy = units.H_to_eV(energy)
+            doss = units.eV_to_H(doss)  # states/Hartree to states/eV
             unit = 'eV'
         elif ftype == 'PDOS':
-            energy = cm_to_thz(energy)
-            doss = thz_to_cm(doss)
+            energy = units.cm_to_thz(energy)
+            doss = units.thz_to_cm(doss)
             unit = 'THz'
 
         return spin, efermi, doss, energy, unit
@@ -282,9 +283,7 @@ class CrgraParser():
                 defined above, nY\*nX\*nSpin.
             unit (str): 'a.u.'
         """
-        import pandas as pd
-        import numpy as np
-        import re, warnings
+        import re
         from CRYSTALpytools.geometry import CStructure
 
         df = pd.DataFrame(open(filename))
@@ -322,7 +321,7 @@ class CrgraParser():
 
         index = np.array(index, ndmin=1, dtype=int)
         if len(index) > len(mapn_lines)-1:
-            warnings.warn(
+            warn(
                 "{:d} 2D map entries found, while {:d} 2D data grids are required. Only the first {:d} indices are read".format(len(mapn_lines)-1, len(index), len(mapn_lines)-1),
                 stacklevel=2
             )
@@ -400,8 +399,6 @@ class DLVParser():
             unit (str): 'eV' or 'THz'
         """
         import re
-        import numpy as np
-        from CRYSTALpytools.units import H_to_eV, au_to_angstrom, cm_to_thz
 
         file = open(filename, 'r')
         data = file.readlines()
@@ -426,7 +423,7 @@ class DLVParser():
             tick_label.append(str(data[17+n_tick+i*2].split()[3][2:]))
 
         if 'EFERMI' in data[-1]:
-            efermi = H_to_eV(float(data[-1].split()[3]))
+            efermi = units.H_to_eV(float(data[-1].split()[3]))
             is_electron = True
             unit = 'eV'
         else:
@@ -458,13 +455,13 @@ class DLVParser():
                       1] = np.array([float(n) for n in line.split()[1:]])
 
         if is_electron == True:  # Convert all the energy to eV
-            bands[:, :, :] = H_to_eV(bands[:, :, :])
+            bands[:, :, :] = units.H_to_eV(bands[:, :, :])
         else:  # Convert all the frequency to THz
-            bands[:, :, :] = cm_to_thz(bands[:, :, :])
+            bands[:, :, :] = units.cm_to_thz(bands[:, :, :])
 
         # k coordinates unit. Typically that does not matter
-        tick_pos = au_to_angstrom(np.array(tick_pos, dtype=float))
-        k_path = au_to_angstrom(k_path)
+        tick_pos = units.au_to_angstrom(np.array(tick_pos, dtype=float))
+        k_path = units.au_to_angstrom(k_path)
 
         return spin, tick_pos, tick_label, efermi, bands, k_path, unit
 
@@ -486,8 +483,6 @@ class DLVParser():
             unit (str): 'eV' or 'THz'
         """
         import re
-        import numpy as np
-        from CRYSTALpytools.units import H_to_eV, cm_to_thz, eV_to_H, thz_to_cm
 
         file = open(filename, 'r')
         data = file.readlines()
@@ -501,7 +496,7 @@ class DLVParser():
         n_proj = int(data[0].split()[4])
         spin = int(data[0].split()[6])
         if 'EFERMI' in data[-1]:
-            efermi = H_to_eV(float(data[-1].split()[3]))
+            efermi = units.H_to_eV(float(data[-1].split()[3]))
             is_electron = True
             unit = 'eV'
         else:
@@ -531,11 +526,11 @@ class DLVParser():
 
         # Convert all the energy to eV / THz
         if is_electron == True:
-            energy = H_to_eV(energy)
-            doss = eV_to_H(doss)  # states/Hartree to states/eV
+            energy = units.H_to_eV(energy)
+            doss = units.eV_to_H(doss)  # states/Hartree to states/eV
         else:
-            energy = cm_to_thz(energy)
-            doss = thz_to_cm(doss)
+            energy = units.cm_to_thz(energy)
+            doss = units.thz_to_cm(doss)
         return spin, efermi, doss, energy, unit
 
     @classmethod
@@ -852,34 +847,32 @@ class CUBEParser():
             filename (str):
 
         Returns:
-            origin (array): 1\*3 Cartesian coordinates of origin. Unit: :math:`\\AA`.
-            a (array): 1\*3 Cartesian coordinates of grid x base vector end. Unit: :math:`\\AA`.
-            b (array): 1\*3 Cartesian coordinates of grid y base vector end. Unit: :math:`\\AA`.
-            c (array): 1\*3 Cartesian coordinates of grid z base vector end. Unit: :math:`\\AA`.
+            origin (array): 1\*3 Cartesian coordinates of origin.
+            a (array): 1\*3 Cartesian coordinates of grid x base vector end, in :math:`\\AA`.
+            b (array): 1\*3 Cartesian coordinates of grid y base vector end, in :math:`\\AA`.
+            c (array): 1\*3 Cartesian coordinates of grid z base vector end, in :math:`\\AA`.
             struc (CStructure): Extended Pymatgen Structure object.
             grid (array): nZ\*nY\*nX array of 3D data grid.
-            unit (str): Data grid unit, 'a.u.'
+            unit (str): Data grid unit, 'a.u.'. Structure and base vector are
+                not influenced.
         """
-        import pandas as pd
-        import numpy as np
         from CRYSTALpytools.geometry import CStructure
-        from CRYSTALpytools.units import au_to_angstrom
         from pymatgen.core.lattice import Lattice
         from scipy.spatial.transform import Rotation as Rot
 
         df = pd.DataFrame(open(filename))
         latt = np.array(df[0][1].strip().split(), dtype=float)
-        latt[0:3] = au_to_angstrom(latt[0:3])
+        latt[0:3] = units.au_to_angstrom(latt[0:3])
 
         # get geom
         ## lattice
         gridv = np.array(df[0].loc[2:5].map(lambda x: x.strip().split()).tolist(),
                          dtype=float)
         natom = int(gridv[0, 0])
-        origin = au_to_angstrom(gridv[0, 1:])
-        a = au_to_angstrom(gridv[1, 1:] * (gridv[1, 0]-1)) + origin
-        b = au_to_angstrom(gridv[2, 1:] * (gridv[2, 0]-1)) + origin
-        c = au_to_angstrom(gridv[3, 1:] * (gridv[3, 0]-1)) + origin
+        origin = units.au_to_angstrom(gridv[0, 1:])
+        a = units.au_to_angstrom(gridv[1, 1:] * (gridv[1, 0]-1)) + origin
+        b = units.au_to_angstrom(gridv[2, 1:] * (gridv[2, 0]-1)) + origin
+        c = units.au_to_angstrom(gridv[3, 1:] * (gridv[3, 0]-1)) + origin
         atoms = df[0].loc[6:5+natom].map(lambda x: x.strip().split()).tolist()
         species = np.array([i[0] for i in atoms], dtype=int)
         site_properties = {'charges' : species - np.array([i[1] for i in atoms], dtype=float)}
@@ -896,8 +889,9 @@ class CUBEParser():
         else: rotvec = rotvec / np.linalg.norm(rotvec) * np.arccos(np.dot(vec1, vec2))
         rot = Rot.from_rotvec(rotvec)
         lattice = Lattice(rot.apply(lattmx))
-        struc = CStructure(lattice, species, au_to_angstrom(coords), pbc=(True, True, True),
-                           site_properties=site_properties, coords_are_cartesian=True)
+        struc = CStructure(lattice, species, units.au_to_angstrom(coords),
+                           pbc=(True, True, True), site_properties=site_properties,
+                           coords_are_cartesian=True)
         # read data
         na = int(gridv[1, 0]); nb = int(gridv[2, 0]); nc = int(gridv[3, 0])
         grid = []
