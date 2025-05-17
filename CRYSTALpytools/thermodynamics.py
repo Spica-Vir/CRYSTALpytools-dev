@@ -2247,19 +2247,18 @@ class Quasi_harmonic:
         # Polynomial without constant
         gru_fit = np.zeros([self.nqpoint, self.nmode])
         r2tot = np.zeros([self.nqpoint, self.nmode])
-        v_by_v0 = self.combined_volume[1:] / self.combined_volume[0]
+        dlnV = np.log(self.combined_volume[1:] / self.combined_volume[0])
         for iq, freq_q in enumerate(self.combined_freq): # nQpt*nMode*nCalc
             for im, freq in enumerate(freq_q):
                 if np.sum(np.abs(freq)) < 1e-2:
                     gru_fit[iq, im] = 0.
                     r2tot[iq, im] = 1.
                 else:
-                    omega0 = self.combined_freq[iq, im, 0]
-                    omega = self.combined_freq[iq, im, 1:]
-                    gru = np.mean(-np.log(omega/omega0) / np.log(v_by_v0))
+                    dlnOmega = np.log(self.combined_freq[iq, im, 1:] / self.combined_freq[iq, im, 0])
+                    coef, lst = polyfit(dlnV, dlnOmega, deg=[1], full=True)
+                    gru = -coef[1]
                     gru_fit[iq, im] = gru
-                    omeganew = omega0 * v_by_v0 ** -gru
-                    r2tot[iq, im] = 1 - np.sum((omeganew - omega)**2) / np.sum((omega - np.mean(omega))**2)
+                    r2tot[iq, im] = 1 - lst[0][0] / np.sum((dlnV - np.mean(dlnV))**2)
 
         r2avg = np.mean(r2tot, axis=1)
         self.gru_fit = gru_fit
