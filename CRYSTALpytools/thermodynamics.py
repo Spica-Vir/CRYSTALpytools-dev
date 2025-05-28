@@ -1457,7 +1457,7 @@ class Quasi_harmonic:
             self.gibbs_fit.append(allfunc[idx])
             r2tot.append(allr2[idx])
         r2tot = np.array(r2tot)
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
 
         for ip in range(self.pressure.shape[0]):
             func = self.gibbs_fit[ip]
@@ -1545,7 +1545,7 @@ class Quasi_harmonic:
             r2tot.append(r2_p[idx])
         self.vol_fit = func
         r2tot = np.array(r2tot)
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
 
         if plot == True:
             fig, ax = subplots(1, 1, figsize=(8, 6))
@@ -1768,7 +1768,7 @@ class Quasi_harmonic:
             lfit.append(allfunc[idx])
             r2tot.append(allr2[idx])
         r2tot = np.array(r2tot)
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
 
         self.sg = sg
         self.lattice = np.zeros([self.volume.shape[0], self.volume.shape[1], 3, 3])
@@ -1988,7 +1988,7 @@ class Quasi_harmonic:
                 x0 = out.x
                 r2tot.append(1 - lmx.shape[0]*out.fun**2/np.sum((dG[:, ip, it]-np.mean(dG[:, ip, it]))**2))
 
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
         if self.filefmt=='yaml':
             minarg = {}
             for key in min_inp.keys():
@@ -2228,7 +2228,7 @@ class Quasi_harmonic:
             order (list[int] | array[int]): The order of polynomials used.
         Returns:
             r2tot (array): nQpoint\*nMode array of R^2.
-            r2avg (array): Averaged R^2 at each q point.
+            r2avg (array): Averaged R^2 overall.
             self: New attributes listed below.
             fit_order (array): Same as ``order``.
             freq_fit (list): nQpoint\*nMode list of fitted polynomials.
@@ -2258,14 +2258,14 @@ class Quasi_harmonic:
                     r2tot[iq, im] = r2s[idx]
             poly_fit.append(fitq)
 
-        r2avg = np.mean(r2tot, axis=1)
+        r2avg = r2tot.mean()
         # Fit info saved for restart
         self.fit_order = order
         self.freq_fit = poly_fit
 
         # Deprecated methods
         if self.filefmt=='txt':
-            Output.old_write_polyfit(self, r2tot, r2avg)
+            Output.old_write_polyfit(self, r2tot, r2tot.mean(axis=1))
         return r2tot, r2avg
 
 
@@ -2296,7 +2296,7 @@ class Quasi_harmonic:
                     gru_fit[iq, im] = -coef[1]
                     r2tot[iq, im] = 1 - lst[0][0] / np.sum((dlnOmega - np.mean(dlnOmega))**2)
 
-        r2avg = np.mean(r2tot, axis=1)
+        r2avg = r2tot.mean()
         self.gru_fit = gru_fit
         return r2tot, r2avg
 
