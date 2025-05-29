@@ -972,7 +972,7 @@ class Quasi_harmonic:
 
             \\gamma_{\\textbf{q}i}=-\\frac{\\ln{\\omega}-\\ln{\\omega_{0}}}{\\ln{V}-\\ln{V_{0}}}
 
-        :math:`V_{0}` is the most compact structure sampled. Frequency at given
+        :math:`V_{0}` is the energy minimum structure sampled. Frequency at given
         volume can be expressed analytically by:
 
         .. math::
@@ -1229,16 +1229,12 @@ class Quasi_harmonic:
         Helmholtz free energies of sampled harmonic phonons. The explicit
         sorting and fitting of frequency-volume relationship is disabled.
 
-        The equilibrium volume is fitted by minimizing the difference between
-        analytical pressure and the given pressure at constant temperature.
+        The equilibrium volume is fitted by minimizing Gibbs free energy at the
+        given temperature and constant temperature.
 
         .. math::
 
-            V(T,p_{0})=\\text{min}\\left[
-                -\\left(
-                    \\frac{\\partial F(V)}{\\partial V}
-                \\right)_{T} - p_{0}
-            \\right]^{2}
+            V(p;T)=\\text{min}\\left[F_{EOS}(V;T) + pV\\right]
 
         Parameterized and tested algorithms for ``min_method``:
 
@@ -1260,8 +1256,7 @@ class Quasi_harmonic:
 
             C_{p}=-T\\left(\\frac{\\partial^{2}G}{\\partial T^{2}}\\right)_{p}
 
-        :math:`G(T)` is fitted as polynomial specified by ``poly_order``. The
-        first order is forced to be 0 to ensure :math:`S=0` at 0 K.
+        :math:`G(T)` is fitted as polynomial specified by ``poly_order``.
 
         .. note::
 
@@ -1396,6 +1391,10 @@ class Quasi_harmonic:
                 self.eos_fit(self.combined_volume, helmholtz[it, :], eos_method, **eosinp)
             )
 
+        # Expression of Gibbs free energy
+        def gibbs_opt(volume, eos, p):
+            return eos(volume) + p*volume
+
         # Get thermoproperties
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
         self.helmholtz = np.zeros(self.volume.shape)
@@ -1405,22 +1404,20 @@ class Quasi_harmonic:
         self.k_t = np.zeros(self.volume.shape)
 
         methods = {
-            'BFGS': "fit = minimize(lam_p, v, method='BFGS', jac='3-point')",
-            'L-BFGS-B': "fit = minimize(lam_p, v, method='L-BFGS-B', jac='3-point', bounds=volume_bound)",
-            'SLSQP': "fit = minimize(lam_p, v, method='SLSQP', jac='3-point', bounds=volume_bound)",
+            'BFGS': "fit = minimize(gibbs_opt, v, args=(eos, p), method='BFGS', jac='3-point')",
+            'L-BFGS-B': "fit = minimize(gibbs_opt, v, args=(eos, p), method='L-BFGS-B', jac='3-point', bounds=volume_bound)",
+            'SLSQP': "fit = minimize(gibbs_opt, v, args=(eos, p), method='SLSQP', jac='3-point', bounds=volume_bound)",
         }
         if volume_bound is not None:
             volume_bound = np.array(volume_bound, ndmin=2).tolist()[0]
 
-        v = symbols('v')
         for it, eos in enumerate(self.eos):
-            p_eos = -diff(eos(v), v, 1)
             for ip, p in enumerate(self.pressure):
-                p_kj = p * Avogadro / 1e24  # GPa --> kJ/mol.Angstrom^3
-                lam_p = lambdify(v, (p_eos - p_kj)**2, 'numpy')
-                params = {'minimize': minimize,
-                          'lam_p': lam_p,
-                          'v': eos.v0,
+                params = {'minimize'    : minimize,
+                          'gibbs_opt'   : gibbs_opt,
+                          'v'           : eos.v0,
+                          'eos'         : eos,
+                          'p'           : p*Avogadro/1e24,# GPa --> kJ/mol.Angstrom^3
                           'volume_bound': [volume_bound]}
                 exec(methods[min_method], params)
                 fit = params['fit']
@@ -1431,8 +1428,9 @@ class Quasi_harmonic:
                          % (fit.x[0], self.temperature[it], p), stacklevel=2)
                 self.volume[ip, it] = fit.x[0]
                 self.helmholtz[ip, it] = eos(fit.x[0])
-                self.gibbs[ip, it] = eos(fit.x[0]) + p_kj * fit.x[0]
+                self.gibbs[ip, it] = fit.fun
 
+            v = symbols('v')
             second = lambdify(v, diff(eos(v), v, 2), 'numpy')
             self.k_t[:, it] = self.volume[:, it] * second(self.volume[:, it]) / molpv
 
@@ -2215,7 +2213,7 @@ class Quasi_harmonic:
 
         # Deprecated methods
         if self.filefmt=='txt':
-            ThermoQHA.old_write_eosfit(self, self.filename, close_overlap)
+            ThermoQHA.old_write_eosfit(self, eos, method.lower())
         return eos
 
 
@@ -2677,7 +2675,7 @@ class Quasi_harmonic:
         """Deprecated. Call ``from_file()`` directly."""
         warn("Deprecated. Call 'from_file(source='phonopy')' instead.", stacklevel=2)
         self.from_file(*phono_yaml, source='phonopy', struc_yaml=struc_yaml,
-                       u_0=edft, scale=scale, mode_sort_tol=mode_sort_tol,
+                       u_0=edft, scale=scale, mode_sort_tol=None,
                        imaginary_tol=imaginary_tol, q_overlap_tol=q_overlap_tol,
                        q_id=q_id, q_coord=q_coord)
         return self
