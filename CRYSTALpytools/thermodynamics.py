@@ -855,7 +855,7 @@ class Quasi_harmonic:
 
         # Gibbs(V; T, p) minimization nPress*nTempt list
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
-        v_init = np.mean(self.combined_volume)
+        v_init = self.combined_volume.mean()
 
         zp = 0. # analytical expression of U
         wt = self.qpoint[:, 3] / np.sum(self.qpoint[:, 3])
@@ -1127,7 +1127,7 @@ class Quasi_harmonic:
 
         # Gibbs(V; T, p) minimization nPress*nTempt list
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
-        v_init = np.mean(self.combined_volume)
+        v_init = self.combined_volume.mean()
         iv0 = np.argmin(self.combined_volume)
 
         wt = self.qpoint[:, 3] / np.sum(self.qpoint[:, 3])
@@ -1449,7 +1449,7 @@ class Quasi_harmonic:
                 if fix0K == True: deg = deg[1:]
                 coef, lst = polyfit(dT, dgb, deg=deg, full=True)
                 poly = Polynomial(coef)
-                allr2.append(1 - lst[0][0]/np.sum((dgb - np.mean(dgb))**2))
+                allr2.append(1 - lst[0][0]/np.sum((dgb - dgb.mean())**2))
                 allfunc.append(poly+gb[0])
             idx = np.argmax(allr2)
             self.gibbs_fit.append(allfunc[idx])
@@ -1536,7 +1536,7 @@ class Quasi_harmonic:
                 if fix0K == True: deg = deg[1:]
                 coef, lst = polyfit(dt, dvp, deg=deg, full=True)
                 poly = Polynomial(coef)
-                r2_p.append(1 - lst[0][0]/np.sum((dvp - np.mean(dvp))**2))
+                r2_p.append(1 - lst[0][0]/np.sum((dvp - dvp.mean())**2))
                 func_p.append(poly+self.volume[ip, 0])
             idx = np.argmax(r2_p)
             func.append(func_p[idx])
@@ -1760,7 +1760,7 @@ class Quasi_harmonic:
                 deg = [i+1 for i in range(o)]
                 coef, lst = polyfit(dv, dp, deg=deg, full=True)
                 poly = Polynomial(coef)
-                allr2.append(1 - lst[0][0]/np.sum((dp - np.mean(dp))**2))
+                allr2.append(1 - lst[0][0]/np.sum((dp - dp.mean())**2))
                 allfunc.append(poly+pref[0])
             idx = np.argmax(allr2)
             lfit.append(allfunc[idx])
@@ -1956,11 +1956,11 @@ class Quasi_harmonic:
         self.lattice = np.zeros([self.volume.shape[0], self.volume.shape[1], 3, 3])
         dG = Gibbs - self.gibbs*vscale
         for i, p in enumerate(iparam[:-1]):
-            init_x0[i+lenhess] = np.mean(lmx[:, p[0], p[1]])
+            init_x0[i+lenhess] = lmx[:, p[0], p[1]].mean()
         min_inp = dict(method='BFGS', jac='3-point', tol=0.05)
         for key in ['method', 'jac', 'hess', 'hessp', 'bounds', 'constraints', 'tol', 'options']:
             if key in kwargs.keys(): min_inp[key] = kwargs[key]
-        r2tot = []
+        r2tot = np.zeros([len(self.pressure), len(self.temperature)])
 
         for ip, p in enumerate(self.pressure):
             x0 = init_x0
@@ -1984,7 +1984,7 @@ class Quasi_harmonic:
                 self.lattice[ip, it] = L @ rot
 
                 x0 = out.x
-                r2tot.append(1 - lmx.shape[0]*out.fun**2/np.sum((dG[:, ip, it]-np.mean(dG[:, ip, it]))**2))
+                r2tot[ip,it] = 1 - lmx.shape[0]*out.fun**2/np.sum((dG[:, ip, it]-dG[:, ip, it].mean())**2)
 
         r2avg = r2tot.mean()
         if self.filefmt=='yaml':
@@ -2130,14 +2130,14 @@ class Quasi_harmonic:
                     if fix0K == True: deg = deg[1:]
                     coef, lst = polyfit(dT, dl, deg=deg, full=True)
                     poly = Polynomial(coef)
-                    r2_p.append(1 - lst[0][0]/np.sum((dl - np.mean(dl))**2))
+                    r2_p.append(1 - lst[0][0]/np.sum((dl - dl.mean())**2))
                     func_p.append(poly+L[ip, 0, i])
                 idx = np.argmax(r2_p)
                 func[ip].append(func_p[idx])
                 r2tot[ip, i] = r2_p[idx]
 
         self.latt_fit = func
-        r2avg = np.mean(r2tot, axis=0)
+        r2avg = r2tot.mean(axis=0)
 
         # Derive
         self.alpha_l = np.zeros([npress, ntempt, nparam])
@@ -2167,6 +2167,43 @@ class Quasi_harmonic:
         if self.filefmt=='yaml':
             ThermoQHA.write_expansion_latt(self, name, poly_order, r2tot, r2avg)
         return self
+
+    def get_Harmonic(self, vol):
+        """
+        Generate 'Harmonic' object by specifying the volume. Thermodynamic
+        properties must be fitted by 'thermo_freq' or 'thermo_gruneisen'.
+
+        Args:
+            vol (float): Volume in :math:`\\AA^{3}`.
+        Returns:
+            ha (Harmonic): Harmonic phonon object.
+        """
+        # sainity check
+        if self.method != 'thermo_gruneisen' and self.method != 'thermo_freq':
+            raise Exception("A 'thermo_freq()' or 'thermo_gruneisen()' fitting must be performed before calling this function.")
+        if not hasattr(self, 'u0_fit'):
+            raise Exception("The static internal energy must be fitted by equation of states.")
+
+        # Numerical frequency
+        if self.method == 'thermo_freq':
+            num_freq = np.zeros([self.nqpoint,selfa.nmode])
+            dV = vol - self.combined_volume[0]
+            for iq in range(self.nqpoint):
+                for im in range(self.nmode):
+                    num_freq[iq, im] = self.freq_fit[iq][im](dV)
+        elif self.method == 'thermo_gruneisen':
+            iv0 = np.argmin(self.combined_volume)
+            omega0 = self.combined_freq[:, :, iv0]
+            v_by_v0 = vol / self.combined_volume[iv0]
+            num_freq = omega0 * v_by_v0**-self.gru_fit
+
+        # HA
+        ha = Harmonic(autocalc=False).from_frequency(
+            self.u0_fit(vol), self.qpoint, num_freq,
+            np.array([[[[] for j in range(self.natom)] for k in range(self.nmode)] for l in range(self.nqpoint)]),
+            self.combined_symm[:, :, 0],
+            natom=self.natom, volume=vol)
+        return ha
 
 
     def eos_fit(self, volume, energy, method, **kwargs):
@@ -2248,7 +2285,7 @@ class Quasi_harmonic:
                     polys = []; r2s = []
                     for o in order:
                         coef, lst = polyfit(dv, df, deg=[i+1 for i in range(o)], full=True)
-                        r2 = 1 - lst[0][0] / np.sum((df - np.mean(df))**2)
+                        r2 = 1 - lst[0][0] / np.sum((df - df.mean())**2)
                         polys.append(Polynomial(coef))
                         r2s.append(r2)
                     idx = np.argmax(r2s)
@@ -2260,6 +2297,7 @@ class Quasi_harmonic:
         # Fit info saved for restart
         self.fit_order = order
         self.freq_fit = poly_fit
+        self.method = 'thermo_freq'
 
         # Deprecated methods
         if self.filefmt=='txt':
@@ -2292,10 +2330,11 @@ class Quasi_harmonic:
                     dlnOmega = np.log(self.combined_freq[iq, im] / self.combined_freq[iq, im, iv0])
                     coef, lst = polyfit(dlnV, dlnOmega, deg=[1], full=True)
                     gru_fit[iq, im] = -coef[1]
-                    r2tot[iq, im] = 1 - lst[0][0] / np.sum((dlnOmega - np.mean(dlnOmega))**2)
+                    r2tot[iq, im] = 1 - lst[0][0] / np.sum((dlnOmega - dlnOmega.mean())**2)
 
         r2avg = r2tot.mean()
         self.gru_fit = gru_fit
+        self.method = 'thermo_gruneisen'
         return r2tot, r2avg
 
 
@@ -2624,30 +2663,10 @@ class Quasi_harmonic:
             Gibbs[i] = ha.gibbs
 
         if interp != 0:
-            if self.method == 'thermo_freq':
-                for iv in range(interp):
-                    num_freq = np.zeros([self.nqpoint, self.nmode])
-                    vol = newvol[iv] / vscale
-                    dvol = vol - self.combined_volume[0]
-                    for iq in range(self.nqpoint):
-                        for im in range(self.nmode):
-                            num_freq[iq, im] = self.freq_fit[iq][im](dvol)
-                    ha = Harmonic(filename=None, autocalc=False).from_frequency(
-                        self.u0_fit(vol), self.qpoint, num_freq, eigvt, symm, natom=self.natom, volume=vol
-                    )
-                    ha.thermodynamics(temperature=self.temperature, pressure=self.pressure)
-                    Gibbs[self.ncalc+iv] = ha.gibbs
-            elif self.method == 'thermo_gruneisen':
-                omega0 = self.combined_freq[:, :, 0]
-                for iv in range(interp):
-                    vol = newvol[iv] / vscale
-                    v_by_v0 = vol / self.combined_volume[0]
-                    num_freq = omega0 * v_by_v0**-self.gru_fit
-                    ha = Harmonic(filename=None, autocalc=False).from_frequency(
-                        self.u0_fit(vol), self.qpoint, num_freq, eigvt, symm, natom=self.natom, volume=vol
-                    )
-                    ha.thermodynamics(temperature=self.temperature, pressure=self.pressure)
-                    Gibbs[self.ncalc+iv] = ha.gibbs
+            for iv in range(interp):
+                ha = self.get_Harmonic(newvol[iv])
+                ha.thermodynamics(temperature=self.temperature, pressure=self.pressure)
+                Gibbs[self.ncalc+iv] = ha.gibbs
         Gibbs *=  vscale
         return sg, vscale, rot, lmx, Gibbs
 
