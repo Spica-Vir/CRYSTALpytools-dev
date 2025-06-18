@@ -682,19 +682,30 @@ class TOPONDParser():
                 path.
             unit (str): 'a.u.'
         """
-        wtraj = []; traj = []
-        tab = pd.read_fwf(filename, header=None)
+        wt = []; tj = []
+        tab = pd.read_fwf(filename, header=None, widths=[3, 12, 15, 15])
         tab = tab.to_numpy(dtype=float)
 
         countline = 0
         while countline < len(tab):
             # header lines
             line = tab[countline]
-            wtraj.append(line[1])
+            wt.append(line[1])
             npt_line = int(line[0])
-            traj.append(tab[countline+1:countline+npt_line+1, 1:])
+            tj.append(tab[countline+1:countline+npt_line+1, 1:])
             countline += npt_line+1
 
+        # Remove repeated lines
+        wtraj = []; traj = []
+        for w, t in zip(wt, tj):
+            repeated = False
+            for wref, tref in zip(wtraj, traj):
+                if t.shape[0] != tref.shape[0]: continue
+                if wref != w: continue
+                if np.linalg.norm(t - tref) < 1e-8: repeated = True; break
+
+            if repeated == False:
+                wtraj.append(w); traj.append(t)
         return wtraj, traj, 'a.u.'
 
 

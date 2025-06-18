@@ -4,13 +4,14 @@
 Objects of input / output files of CRYSTAL. Methods to edit or subtract data
 from corresponding files are provided.
 """
+import numpy as np
+from warnings import warn
+
 from CRYSTALpytools import units
 from CRYSTALpytools.base.crysd12 import Crystal_inputBASE
 from CRYSTALpytools.base.propd3 import Properties_inputBASE
 from CRYSTALpytools.base.output import POutBASE
 from CRYSTALpytools.geometry import Crystal_gui
-
-import numpy as np
 
 
 class Crystal_input(Crystal_inputBASE):
@@ -2848,7 +2849,6 @@ class Properties_output(POutBASE):
                 ``self.TOPOND``. A ``topond.ChargeDensity`` or
                 ``topond.GradientTraj`` class is generated.
         """
-        import warnings
         from CRYSTALpytools.base.extfmt import TOPONDParser, CUBEParser
         from CRYSTALpytools.topond import \
             ChargeDensity, SpinDensity, Gradient, Laplacian, HamiltonianKE, \
@@ -2879,8 +2879,8 @@ class Properties_output(POutBASE):
                     break
 
         if category=='unknown':
-            warnings.warn("Unknown type string / filename does not contian type string.",
-                          stacklevel=2)
+            warn("Unknown type string / filename does not contian type string.",
+                 stacklevel=2)
             type = 'unknown'
             # still need to distinguish 3D, surf and traj
             file = open(topondfile, 'r')
@@ -2894,14 +2894,14 @@ class Properties_output(POutBASE):
             if category == '2Dscale':
                 _, a, b, c, _, _, map, unit = TOPONDParser.contour2D(topondfile)
                 if not hasattr(self, 'file_name'):
-                    warnings.warn('Properties output file not found: Geometry not available',
-                                  stacklevel=2)
+                    warn('Properties output file not found: Geometry not available',
+                         stacklevel=2)
                     struc = None
                     # The a, b, c by are dummy base vectors. Info in 3D space lost.
                     base = np.vstack([a, b, c])
                 else:
                     struc = super().get_geometry()
-                    # no atom plot currently, though read method is given
+                    # no 2D atom plot currently, though read method is given
                     _, base = super().get_topond_geometry()
                 map = map[:,:,0]
                 base = units.au_to_angstrom(base) # Commensurate with structure.
@@ -2941,8 +2941,9 @@ class Properties_output(POutBASE):
                 raise Exception("Properties output file is mandatory for 'TRAJ' files.")
             wtraj, traj, unit = TOPONDParser.traj(topondfile)
             struc = super().get_geometry()
-            # no atom plot currently, though read method is given
+            # no 2D atom plot currently, though read method is given
             _, base = super().get_topond_geometry()
+            base = units.au_to_angstrom(base) # Commensurate with structure.
             # class instantiation
             if type == 'TRAJGRAD' or type == 'unknown':
                 obj = GradientTraj(wtraj, traj, base, struc, unit)
@@ -2990,9 +2991,7 @@ class Properties_output(POutBASE):
         """
         from CRYSTALpytools.base.extfmt import CrgraParser
         from CRYSTALpytools.electronics import ChargeDensity
-        import numpy as np
         import pandas as pd
-        import warnings
 
         method = method.lower()
         if method == 'substract': method = 'subtract'# an old typo
@@ -3002,8 +3001,8 @@ class Properties_output(POutBASE):
         pato = [] # used for method check
         if not hasattr(self, 'file_name'):
             if np.all(index==None):
-                warnings.warn('Properties output file not found: Only the first 1 (2) density map(s) will be read for spin=1(2).',
-                              stacklevel=2)
+                warn('Properties output file not found: Only the first 1 (2) density map(s) will be read for spin=1(2).',
+                     stacklevel=2)
                 index = None
             else:
                 index = np.array(index, dtype=int, ndmin=1)
@@ -3040,8 +3039,8 @@ class Properties_output(POutBASE):
                                           np.where(headers>chg[1-use_idx])[0][0]], dtype=int)
                         index = np.sort(index)
                 else:
-                    warnings.warn('Multiple charge densities exist in the calculation. Only the first density map will be read.',
-                                  stacklevel=2)
+                    warn('Multiple charge densities exist in the calculation. Only the first density map will be read.',
+                         stacklevel=2)
                     index = 0
 
         # read file 0
@@ -3070,17 +3069,17 @@ class Properties_output(POutBASE):
             self.echg._set_unit('Angstrom')
             if method == 'alpha_beta':
                 if len(f25_files) > 1:
-                    warnings.warn("The 'alpha_beta' method is used only for a single entry. Nothing is done to other entries.",
-                                  stacklevel=2)
+                    warn("The 'alpha_beta' method is used only for a single entry. Nothing is done to other entries.",
+                         stacklevel=2)
                 elif spin != 2:
-                    warnings.warn("Not a spin-polarized system, do nothing", stacklevel=2)
+                    warn("Not a spin-polarized system, do nothing", stacklevel=2)
                 else:
                     self.echg.alpha_beta()
             elif method == 'subtract':
                 if len(f25_files) > 1:
                     self.echg = self.echg.subtract(*[f for f in f25_files[1:]])
                 else:
-                    warnings.warn("Nothing to subtract.", stacklevel=2)
+                    warn("Nothing to subtract.", stacklevel=2)
 
         return self.echg
 
@@ -3113,9 +3112,7 @@ class Properties_output(POutBASE):
         """
         from CRYSTALpytools.base.extfmt import CUBEParser
         from CRYSTALpytools.electronics import ChargeDensity
-        import numpy as np
         import pandas as pd
-        import warnings
 
         method = method.lower()
         if method == 'substract': method = 'subtract'# an old typo
@@ -3141,8 +3138,8 @@ class Properties_output(POutBASE):
         if hasattr(self, 'file_name'):
             struc1 = super().get_geometry()
             if compare_struc(struc, struc1) == False:
-                warnings.warn('Inconsistent geometries are given in output and CUBE files, using the one from output.',
-                              stacklevel=2)
+                warn('Inconsistent geometries are given in output and CUBE files, using the one from output.',
+                     stacklevel=2)
             struc = struc1
 
         # Other entries

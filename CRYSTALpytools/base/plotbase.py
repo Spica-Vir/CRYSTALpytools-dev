@@ -712,13 +712,13 @@ def GridCoordinates(base, shape, meshgrid):
     if meshgrid == False:
         coords = []
         for i in range(ndim):
-            frac = np.linspace(0, 1, shape[i], endpoint=False).reshape([-1, 1])
+            frac = np.linspace(0, 1, shape[i]).reshape([-1, 1])
             coords.append(np.add(frac @ [basev[i]], base[0]))
     else:
         fcoords = []
         for i in range(ndim):
             fcoords.append(
-                np.linspace(0, 1, shape[i], endpoint=False).reshape([-1, 1])
+                np.linspace(0, 1, shape[i]).reshape([-1, 1])
             )
         coords = np.meshgrid(*fcoords, indexing='ij'); del fcoords
         coords = np.vstack([i.flatten() for i in coords]).T
@@ -899,8 +899,8 @@ def GridRectangle2D(base, data):
     cosab = np.cos(theta)
     sinab = np.sin(theta)
 
-    X, Y = np.meshgrid(np.linspace(0, lena, data.shape[0], endpoint=False),
-                       np.linspace(0, lenb, data.shape[1], endpoint=False),
+    X, Y = np.meshgrid(np.linspace(0, lena, data.shape[0]),
+                       np.linspace(0, lenb, data.shape[1]),
                        indexing='ij')
     X = np.round(cosab*Y + X, 12)
     Y = np.round(sinab*Y, 12)

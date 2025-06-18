@@ -739,18 +739,19 @@ class CStructure(Structure):
 
     # ---------------------------- Connectivity ------------------------------#
 
-    def get_bonds(self, scale=1.2, special_bonds={}):
+    def get_bonds(self, bond_scale=1.0, special_bonds={}, scale=None):
         """
         .. _ref-CStrucGetBonds:
 
         Get bond connectivity based on distances between atoms.
 
         Args:
-            scale (float): Scale the sum of atomic radius A and radius B.
+            bond_scale (float): Scale the sum of atomic radius A and radius B.
             special_bonds(dict): Dictionary of bond lengths that are not
-                compliant to ``scale``. Should be defined as ``{'A:B' : len}``,
+                compliant to ``bond_scale``. Should be defined as ``{'A:B' : len}``,
                 with ``A`` ``B`` being element symbols and ``len`` being bond
                 length in :math:`\\AA`. The sequence of ``A`` ``B`` is arbitrary.
+            scale: *Deprecated* Same as ``bond_scale``.
         Returns:
             self (CStructure): New attributes listed below.
             self.bonds (list): nBond\*3 list. The first and second elements are
@@ -763,17 +764,28 @@ class CStructure(Structure):
         """
         from scipy.sparse import bsr_array
 
+        if scale != None: bond_scale=scale # compatibility
+
         # get MAX bond lengths
         uspec = np.unique(self.species)
+        uradius = []; usymbol = []
+        for i in uspec:
+            if i.Z == 1: uradius.append(0.4) # H too small
+            else: uradius.append(i.atomic_radius)
+            usymbol.append(i.symbol)
+
         bondMX = {}
         for i in range(len(uspec)):
-            elei = uspec[i]
+            symi = usymbol[i]
+            ri = uradius[i]
             # between same atoms
-            bondMX['{}:{}'.format(elei.symbol, elei.symbol)] = elei.data['Atomic radius'] * 2 * scale
+            bondMX['{}:{}'.format(symi, symi)] = ri * 2 * bond_scale
             for j in range(i+1, len(uspec)):
-                elej = uspec[j]
-                bondMX['{}:{}'.format(elei.symbol, elej.symbol)] = (elei.data['Atomic radius'] + elej.data['Atomic radius']) * scale
-                bondMX['{}:{}'.format(elej.symbol, elei.symbol)] = bondMX['{}:{}'.format(elei.symbol, elej.symbol)]
+                symj = usymbol[j]
+                rj = uradius[j]
+                bondMX['{}:{}'.format(symi, symj)] = (ri + rj) * bond_scale
+                bondMX['{}:{}'.format(symj, symi)] = bondMX['{}:{}'.format(symi, symj)]
+        del uspec, uradius, usymbol
 
         if len(special_bonds) != 0:
             for k in special_bonds.keys():
@@ -989,7 +1001,7 @@ class CStructure(Structure):
         atscale = scale_factors[atom_bond_ratio.lower()]
 
         # Bond connectivity
-        bondkwd = ['scale', 'special_bonds']; newkwd = dict()
+        bondkwd = ['bond_scale', 'scale', 'special_bonds']; newkwd = dict() # scale is for compatibility
         for k, v in zip(kwargs.keys(), kwargs.values()):
             if k in bondkwd: newkwd[k] = v
 
@@ -1135,7 +1147,7 @@ class CStructure(Structure):
         else:
             fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
         ## Atoms
-        radii = np.array([struc.species[int(i)].data['Atomic radius'] for i in atplt[:,0]])
+        radii = np.array([struc.species[int(i)].atomic_radius for i in atplt[:,0]])
         radii[np.where(radii<0.4)[0]] = 0.4 # H too small
 
         if at_data == False:

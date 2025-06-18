@@ -32,7 +32,7 @@ class ScalarField():
         self.dimension = self.data.ndim
         self.structure = struc
         self.unit = unit
-        self.type = type
+        self.type = type.upper()
         self.subtracted = False # Hidden. For plotting.
 
     @classmethod
@@ -123,7 +123,7 @@ class ScalarField():
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        from CRYSTALpytools.base.plotbase import plot_2Dscalar
+        from CRYSTALpytools.base.plotbase import plot_2Dscalar, GridRotation2D
         import matplotlib.pyplot as plt
 
         # unit
@@ -131,71 +131,64 @@ class ScalarField():
         if self.unit.lower() != unit.lower():
             self._set_unit(unit)
 
-        # dimen
-        if self.dimension != 2:
-            self._set_unit(uold)
-            raise Exception('Not a 2D scalar field object.')
-
-        # levels
-        levels = np.array(levels, ndmin=1, dtype=float)
-        if levels.shape[0] == 1:
-            levels = np.linspace(np.min(self.data), np.max(self.data), int(levels[0]))
-        if levels.ndim > 1: raise ValueError('Levels must be a 1D array.')
-
-        # contour line styles
-        if lineplot == False:
-            contourline = None
-        # colormap
-        if colorplot == False:
-            colormap = None
-
-        # overlay
-        if np.all(overlay!=None):
-            if not isinstance(overlay, Trajectory):
-                self._set_unit(uold)
-                raise ValueError("The overlaied layer must be a topond.Trajectory class or its child classes.")
-
-            overlay._set_unit(unit)
-            diff_base = np.abs(overlay.base-self.base)
-            if np.any(diff_base>1e-3):
-                self._set_unit(uold)
-                raise Exception("The plotting base of surface and trajectory are different.")
-            a_range = [0., 1.]; b_range=[0., 1.] # no periodicity for Traj
-
-        # plot
-        ## layout
-        if 'fig' not in kwargs.keys():
-            fig, ax = plt.subplots(1, 1, figsize=figsize, layout='tight')
-            ax_index = 0
-        else:
-            if 'ax_index' not in kwargs.keys():
-                self._set_unit(uold)
-                raise ValueError("Indices of axes must be set when 'fig' is passed.")
-            ax_index = int(kwargs['ax_index'])
-            fig = kwargs['fig']
-            ax = fig.axes[ax_index]
-        ## surf first
-        if unit.lower() == 'angstrom': pltbase = self.base
-        else: pltbase = units.angstrom_to_au(self.base)
         try:
+            # dimen
+            if self.dimension != 2: raise Exception('Not a 2D scalar field object.')
+
+            # levels
+            levels = np.array(levels, ndmin=1, dtype=float)
+            if levels.shape[0] == 1:
+                levels = np.linspace(np.min(self.data), np.max(self.data), int(levels[0]))
+            if levels.ndim > 1: raise ValueError('Levels must be a 1D array.')
+
+            # contour line styles
+            if lineplot == False:
+                contourline = None
+            # colormap
+            if colorplot == False:
+                colormap = None
+
+            # overlay
+            if np.all(overlay!=None):
+                if not isinstance(overlay, Trajectory):
+                    raise Exception("The overlaied layer must be a topond.Trajectory class or its child classes.")
+
+                diff_base = np.abs(overlay.base-self.base)
+                if np.any(diff_base>1e-3):
+                    raise Exception("The plotting base of surface and trajectory are different.")
+                a_range = [0., 1.]; b_range=[0., 1.] # no periodicity for Traj
+
+            # plot
+            ## layout
+            if 'fig' not in kwargs.keys():
+                fig, ax = plt.subplots(1, 1, figsize=figsize, layout='tight')
+                ax_index = 0
+            else:
+                if 'ax_index' not in kwargs.keys():
+                    raise ValueError("Indices of axes must be set when 'fig' is passed.")
+                ax_index = int(kwargs['ax_index'])
+                fig = kwargs['fig']
+                ax = fig.axes[ax_index]
+
+            ## surf first
+            if unit.lower() == 'angstrom': pltbase = self.base
+            else: pltbase = units.angstrom_to_au(self.base)
             fig = plot_2Dscalar(
                 fig, ax, self.data, pltbase, levels, contourline, isovalues, colormap,
                 cbar_label, a_range, b_range, False, edgeplot, x_ticks, y_ticks
             )
+
+            ## plot traj
+            if np.all(overlay!=None):
+                kwargs['fig'] = fig; kwargs['ax_index'] = ax_index
+                kwargs['y_ticks'] = y_ticks; kwargs['x_ticks'] = x_ticks
+                kwargs['figsize'] = figsize; kwargs['unit'] = unit
+                kwargs['title'] = None
+                fig = overlay.plot_2D(**kwargs)
+
         except Exception as e:
             self._set_unit(uold)
             raise e
-
-        ## plot traj
-        if np.all(overlay!=None):
-            kwargs['fig'] = fig; kwargs['ax_index'] = ax_index
-            kwargs['y_ticks'] = y_ticks; kwargs['x_ticks'] = x_ticks
-            kwargs['figsize'] = figsize; kwargs['unit'] = overlay.unit # convert unit in wrappers!!!
-            try:
-                fig = overlay.plot_2D(**kwargs)
-            except Exception as e:
-                self._set_unit(uold)
-                raise e
 
         self._set_unit(uold)
         return fig
@@ -220,34 +213,36 @@ class ScalarField():
         if self.unit.lower() != unit.lower():
             self._set_unit(unit)
 
-        # structure
-        if self.structure == None:
-            self._set_unit(uold)
-            raise Exception("Structure information is required for 3D plots.")
-
-        # Plot figure
-        inputs = dict(struc=self.structure,
-                      base=self.base,
-                      data=self.data,
-                      isovalue=isovalue,
-                      volume_3d=volume_3d,
-                      contour_2d=contour_2d,
-                      interp=interp,
-                      interp_size=interp_size,
-                      grid_display_range=grid_display_range)
-        keys = ['colormap', 'opacity', 'transparent', 'color', 'line_width',
-                'vmax', 'vmin', 'title', 'orientation', 'nb_labels', 'label_fmt'
-                'atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
-                'cell_color', 'cell_linewidth', 'display_range', 'scale',
-                'special_bonds']
-        for k, v in zip(kwargs.keys(), kwargs.values()):
-            if k in keys: inputs[k] = v
-
         try:
+            # structure
+            if self.structure == None:
+                raise Exception("Structure information is required for 3D plots.")
+
+            # Plot figure
+            inputs = dict(struc=self.structure,
+                          base=self.base,
+                          data=self.data,
+                          isovalue=isovalue,
+                          volume_3d=volume_3d,
+                          contour_2d=contour_2d,
+                          interp=interp,
+                          interp_size=interp_size,
+                          grid_display_range=grid_display_range)
+            keys = ['colormap', 'opacity', 'transparent', 'color', 'line_width',
+                    'vmax', 'vmin', 'title', 'orientation', 'nb_labels', 'label_fmt'
+                    'atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
+                    'cell_color', 'cell_linewidth', 'display_range', 'bond_scale', 'scale', # scale is for compatibility
+                    'special_bonds']
+            for k, v in zip(kwargs.keys(), kwargs.values()):
+                if k in keys: inputs[k] = v
+
             fig = plot_GeomScalar(**inputs)
+
         except Exception as e:
             self._set_unit(uold)
             raise e
+
+        self._set_unit(uold)
         return fig
 
     def subtract(self, *args):
@@ -293,7 +288,7 @@ class ScalarField():
         return self.subtract(*args)
 
     def _set_unit(self, unit):
-        """"no practical use."""
+        """"Of no practical use."""
         pass
 
 
@@ -301,12 +296,57 @@ class Trajectory():
     """
     Basic TOPOND trajectory plot class. Call the property-specific child classes
     below to use.
+
+    Args:
+        wtraj (list[int]): 1\*nPath, weight of the path, int 0 to 3.
+        traj (list[array]): 1\*nPath, list of paths. Every array is a nPoint\*3
+            3D ref framework coordinates of points on the path.
+        base (array): 3\*3 Cartesian coordinates of the 3 points defining
+            vectors BC and BA.
+        struc (CStructure): Extended Pymatgen Structure object.
+        unit (str): In principle, should always be 'Angstrom' (case insensitive).
+    Returns:
+        self (Trajectory): Import attributes listed below.
+        trajectory (list): nPath\*2 list of trajectory(2nd) and its weight(1st).
+        cpoint (array): nCpoint\*3 array of critical point coordinates in 3D ref framework.
     """
+    def __init__(self, wtraj, traj, base, struc, type, unit):
+        if len(wtraj) != len(traj):
+            raise ValueError('Inconsistent lengths of input trajectory and its weight.')
+
+        self.base = np.array(base, dtype=float)
+        self.structure = struc
+        self.type = type.upper()
+        self.unit = unit
+        self.cpoint = []; self.trajectory = []
+        for w, t in zip(wtraj, traj):
+            if len(t) == 1: self.cpoint.append(t[0])
+            else: self.trajectory.append([w, t])
+        self.cpoint = np.array(self.cpoint)
+
+    @classmethod
+    def from_file(cls, file, output, type, source):
+        """
+        Generate an object from output files.
+
+        Args:
+            file (str): The trajectory data.
+            output (str): Output file for the geometry and periodicity.
+            type (str): 'TRAJGRAD', 'TRAJMOLG', quantities to plot.
+            source (str): Currently not used. Saved for future development.
+        Returns:
+            cls (Trajectory)
+        """
+        if source == 'crystal':
+            from CRYSTALpytools.crystal_io import Properties_output
+            obj = Properties_output(output).read_topond(file, type)
+        else:
+            raise Exception("Unknown file format. Source = '{}'.".format(source))
+        return obj
+
     def plot_2D(
-        self, cpt_marker='o', cpt_color='k', cpt_size=10,
-        traj_color='r', traj_linestyle=':', traj_linewidth=0.5, x_ticks=5,
-        y_ticks=5, figsize=[6.4, 4.8], overlay=None, fig=None, ax_index=None,
-        **kwargs):
+        self, unit, cpt_marker, cpt_color, cpt_size, traj_weight, traj_color,
+        traj_linestyle, traj_linewidth, x_ticks, y_ticks, figsize, overlay, **kwargs):
         """
         Get TOPOND trajectory in a 2D plot.
 
@@ -318,11 +358,16 @@ class Trajectory():
             ``ScalarField`` object.
 
         Args:
+            unit (str): unit (str): Plot unit. 'Angstrom' for :math:`\\AA`,
+                'a.u.' for Bohr.
             cpt_marker (str): Marker of critical point scatter.
             cpt_color (str): Marker color of critical point scatter.
             cpt_size (float|int): Marker size of critical point scatter.
-            traj_color (str): Line color of 2D trajectory plot.
-            traj_linestyl (str): Line style of 2D trajectory plot.
+            traj_weight (int|list): Weight(s) of the plotted trajectories (0 to 3).
+            traj_color (str|list): 1\*nTraj_weight list of plotted trajectory
+                colors. Use string for the same color.
+            traj_linestyle (str|list): 1\*nTraj_weight list of plotted trajectory
+                styles. Use string for the same style.
             traj_linewidth (str): Line width of 2D trajectory plot.
             x_ticks (int): Number of ticks on x axis.
             y_ticks (int): Number of ticks on y axis.
@@ -330,81 +375,236 @@ class Trajectory():
                 fixed to be equal.
             overlay (None|ScalarField): Overlapping a 2D plot from the
                 ``topond.ScalarField`` object if not None.
-            fig (Figure|None): *Developers only*, matplotlib Figure class..
-            ax_index (list[int]): *Developer Only*, indices of axes in ``fig.axes``.
-            \*\*kwargs : Other arguments passed to ``ScalarField.plot_2D()``.
+            \*\*kwargs : Other arguments passed to ``ScalarField.plot_2D()``, and
+                *developer only* arguments, ``fig`` and ``ax_index``, to pass
+                figure object and axis index.
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        import numpy as np
         import matplotlib.pyplot as plt
-        import copy
         from CRYSTALpytools.base.plotbase import GridRotation2D
+        from CRYSTALpytools.base.plotbase import _plot_label_preprocess
 
-        # overlay
-        if np.all(overlay!=None) and isinstance(overlay, ScalarField):
-            diff_base = np.abs(overlay.base-self.base)
-            if np.any(diff_base>1e-3):
-                raise Exception("The plotting base of surface and trajectory are different.")
+        # unit
+        uold = self.unit
+        if self.unit.lower() != unit.lower():
+            self._set_unit(unit)
 
-        # plot
-        ## layout
-        if np.all(fig==None):
-            fig, ax = plt.subplots(1, 1, figsize=figsize, layout='tight')
-            ax_index = 0
-        else:
-            if np.all(ax_index==None):
-                raise ValueError("Indices of axes must be set when 'fig' is not None.")
-            ax_index = int(ax_index)
-            ax = fig.axes[ax_index]
+        try:
+            # overlay
+            if np.all(overlay!=None):
+                if not isinstance(overlay, ScalarField):
+                    raise Exception("The overlaied layer must be a topond.ScalarField class or its child classes.")
 
-        ## Get bottom surf figure first
-        if np.all(overlay!=None) and isinstance(overlay, ScalarField):
-            kwargs['a_range'] = [0., 1.]; kwargs['b_range'] = [0., 1.] # no periodicity
-            kwargs['edgeplot'] = False; kwargs['figsize'] = figsize
-            kwargs['fig'] = fig; kwargs['ax_index'] = ax_index;
-            kwargs['x_ticks'] = x_ticks; kwargs['y_ticks'] = y_ticks
-            kwargs['unit'] = overlay.unit # convert unit in wrappers!!!
+                diff_base = np.abs(overlay.base-self.base)
+                if np.any(diff_base>1e-3):
+                    raise Exception("The plotting base of surface and trajectory are different.")
 
-            fig = overlay.plot_2D(**kwargs)
-            ax = fig.axes[ax_index]
+            # plot setups
+            traj_weight = np.array(traj_weight, ndmin=1, dtype=int)
+            if type(traj_color) == str:
+                if traj_color.lower() == 'default':
+                    traj_color = []
+                    for wt in traj_weight:
+                        if wt == 3: traj_color.append(cpt_color)
+                        else: traj_color.append('r')
+            if type(traj_linestyle) == str:
+                if traj_linestyle.lower() == 'default':
+                    traj_linestyle = []
+                    for wt in traj_weight:
+                        if wt == 3: traj_linestyle.append('-')
+                        else: traj_linestyle.append(':')
+            if type(traj_linewidth) == str:
+                if traj_linewidth.lower() == 'default':
+                    traj_linewidth = []
+                    for wt in traj_weight:
+                        if wt == 3: traj_linewidth.append(1.0)
+                        else: traj_linewidth.append(0.5)
+            bands = np.zeros([traj_weight.shape[0], 1, 1, 1]) # dummy bands
+            cmds = _plot_label_preprocess(bands, None, traj_color, traj_linestyle, traj_linewidth)
 
-        ## rotate the trajectory to plotting plane, base defined in OAB
-        rot, disp = GridRotation2D(np.vstack([self.base[1], self.base[2], self.base[0]]))
-        ## plot TRAJ
-        baserot = rot.apply(self.base)
-        xmx = np.linalg.norm(baserot[2, :]-baserot[1, :])
-        ymx = np.linalg.norm(baserot[0, :]-baserot[1, :])
-        extra_width = {1 : 0., 2 : 0., 3 : 0.5} # extra linewidth for critical path
-        for wt, traj in self.trajectory:
-            traj = rot.apply(traj)
-            # plot CPT
-            if len(traj) == 1:
-                v = traj[0] - baserot[1]
-                if v[0]>=0 and v[0]<xmx and v[1]>=0 and v[1]<ymx and np.abs(v[2])<=1e-3:
-                    ax.scatter(traj[0,0], traj[0,1], marker=cpt_marker, c=cpt_color, s=cpt_size)
-            # plot TRAJ
+            # plot
+            ## layout
+            if 'fig' not in kwargs.keys():
+                fig, ax = plt.subplots(1, 1, figsize=figsize, layout='tight')
+                ax_index = 0
             else:
-                plttraj = [] # traj in plot plane
-                for v in traj:
-                    v = v - baserot[1]
-                    if v[0]>=0 and v[0]<xmx and v[1]>=0 and v[1]<ymx and np.abs(v[2])<=1e-3:
-                        plttraj.append(v+baserot[1])
+                if 'ax_index' not in kwargs.keys():
+                    raise ValueError("Indices of axes must be set when 'fig' is not None.")
+                fig = kwargs['fig']
+                ax_index = int(kwargs['ax_index'])
+                ax = fig.axes[ax_index]
 
-                if len(plttraj) == 0:
-                    continue
-                plttraj = np.array(plttraj)
-                if wt != 0: # Molegraph path
-                    ax.plot(plttraj[:, 0], plttraj[:, 1], color=cpt_color,
-                            linestyle='-', linewidth=traj_linewidth+extra_width[wt])
-                else: # other pathes
-                    ax.plot(plttraj[:, 0], plttraj[:, 1], color=traj_color,
-                            linestyle=traj_linestyle, linewidth=traj_linewidth)
+            ## Get bottom surf figure first
+            if np.all(overlay!=None) and isinstance(overlay, ScalarField):
+                kwargs['a_range'] = [0., 1.]; kwargs['b_range'] = [0., 1.] # no periodicity
+                kwargs['edgeplot'] = False; kwargs['figsize'] = figsize
+                kwargs['fig'] = fig; kwargs['ax_index'] = ax_index
+                kwargs['x_ticks'] = x_ticks; kwargs['y_ticks'] = y_ticks
+                kwargs['unit'] = unit; kwargs['title'] = None
 
-        ax.set_aspect(1.0)
-        ax.set_xlim(baserot[1, 0], baserot[1, 0]+xmx)
-        ax.set_ylim(baserot[1, 1], baserot[1, 1]+ymx)
+                fig = overlay.plot_2D(**kwargs)
+                ax = fig.axes[ax_index]
+
+            ## rotate the trajectory to plotting plane, base defined in OXY
+            if unit.lower() == 'angstrom': pltbase = self.base
+            else: pltbase = units.angstrom_to_au(self.base)
+
+            rot, disp = GridRotation2D(np.vstack([pltbase[1], pltbase[2], pltbase[0]]))
+            pltbase = rot.apply(pltbase)
+            xmx = np.linalg.norm(pltbase[2, :]-pltbase[1, :])
+            ymx = np.linalg.norm(pltbase[0, :]-pltbase[1, :])
+
+            # Plot critical points
+            if cpt_marker is not None:
+                cpt = (rot.apply(self.cpoint) - pltbase[1]).round(4)
+                cpt = cpt[np.where((cpt[:,0]>=0.)&\
+                                   (cpt[:,0]<=xmx)&\
+                                   (cpt[:,1]>=0.)&\
+                                   (cpt[:,1]<=ymx)&\
+                                   (np.abs(cpt[:,2])<1e-3))]
+                if len(cpt) > 0:
+                    cpt += pltbase[1]
+                    ax.scatter(cpt[:, 0], cpt[:, 1], marker=cpt_marker, c=cpt_color, s=cpt_size)
+
+            # Plot trajectory
+            allwt = np.array([i[0] for i in self.trajectory], dtype=int)
+            alltraj = [i[1] for i in self.trajectory]
+            for wt, clr, stl, lwid in zip(traj_weight, cmds[1], cmds[2], cmds[3]):
+                idx = np.where(allwt==wt)[0]
+                for i in idx:
+                    plttraj = (rot.apply(alltraj[i]) - pltbase[1]).round(4)
+                    plttraj = plttraj[np.where((plttraj[:,0]>=0.)&\
+                                               (plttraj[:,0]<=xmx)&\
+                                               (plttraj[:,1]>=0.)&\
+                                               (plttraj[:,1]<=ymx)&\
+                                               (np.abs(plttraj[:,2])<1e-3))]
+                    if len(plttraj) == 0: continue
+
+                    plttraj += pltbase[1]
+                    ax.plot(plttraj[:, 0], plttraj[:, 1], color=clr[0],
+                            linestyle=stl[0], linewidth=lwid[0])
+
+            ax.set_aspect(1.0)
+            ax.set_xlim(pltbase[1, 0], pltbase[2, 0])
+            ax.set_ylim(pltbase[1, 1], pltbase[0, 1])
+
+        except Exception as e:
+            self._set_unit(uold)
+            raise e
+
+        self._set_unit(uold)
         return fig
+
+    def plot_3D(self, unit, cpt_marker, cpt_color, cpt_size,
+                traj_weight, traj_color, traj_linewidth, **kwargs):
+        """
+        Visualize trajectories in 3D space with atomic structures using
+        `MayaVi <https://docs.enthought.com/mayavi/mayavi/>`_ (*not installed
+        by default*).
+
+        Explanations of input/output arguments are detailed in specific classes.
+        """
+        from CRYSTALpytools.geometry import CStructure
+        from CRYSTALpytools.base.plotbase import GridRotation2D
+        try:
+            from mayavi import mlab
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
+        # unit
+        uold = self.unit
+        if self.unit.lower() != unit.lower():
+            self._set_unit(unit)
+
+        try:
+            # structure
+            if self.structure == None:
+                raise Exception("Structure information is required for 3D plots.")
+            else:
+                if not isinstance(self.structure, CStructure):
+                    raise Exception("Structure information must be in CRYSTALpytools CStructure class for 3D plots.")
+
+            # plot setups
+            traj_weight = np.array(traj_weight, ndmin=1, dtype=int)
+            if type(traj_color) == str:
+                if traj_color.lower() == 'default':
+                    traj_color = []
+                    for wt in traj_weight:
+                        if wt == 3: traj_color.append(cpt_color)
+                        else: traj_color.append((1.,0.,0.))
+            else:
+                traj_color = np.array(traj_color, ndmin=2, dtype=float)
+                if traj_color.shape[0] == 1 and traj_color.shape[1] == 3:
+                    traj_color = traj_color.repeat(traj_weight.shape[0]).reshape([-1, 3]).T
+                if traj_color.shape[0] != traj_weight.shape[0] or traj_color.shape[1] != 3:
+                    raise Exception("Errors in trajectory color settings.")
+
+            if type(traj_linewidth) == str:
+                if traj_linewidth.lower() == 'default':
+                    traj_linewidth = []
+                    for wt in traj_weight:
+                        if wt == 3: traj_linewidth.append(3.0)
+                        else: traj_linewidth.append(1.5)
+            else:
+                traj_linewidth = np.array(traj_linewidth, ndmin=1, dtype=float)
+                if traj_linewidth.shape[0] == 1:
+                    traj_linewidth = traj_linewidth.repeat(traj_weight.shape[0])
+                if traj_linewidth.shape[0] != traj_weight.shape[0]:
+                    raise Exception("Errors in trajectory linewidth settings.")
+
+            # Plot figure
+            ## Geometry
+            if 'display_range' in kwargs.keys():
+                display_range = np.array(kwargs['display_range'], dtype=float)
+            else:
+                display_range = np.array([[0,1], [0,1], [0,1]], dtype=float)
+
+            if np.any(self.structure.pbc==False):
+                idir = np.where(self.structure.pbc==False)[0]
+                display_range[idir] = [0., 1.]
+
+            idx = np.where(display_range[:,1]-display_range[:,0]<1e-4)[0]
+            if len(idx) > 0:
+                direct = ['x', 'y', 'z'][idx[0]]
+                raise Exception("Structure display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
+                    direct, direct, display_range[idx[0], 0], direct, display_range[idx[0], 1]))
+
+            keywords = dict(show_the_scene=False, display_range=display_range)
+            keys = ['atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
+                    'cell_color', 'cell_linewidth', 'bond_scale', 'scale', # scale is for compatibility
+                    'special_bonds']
+            for k, v in zip(kwargs.keys(), kwargs.values()):
+                if k in keys: keywords[k] = v
+
+            fig = self.structure.visualize(**keywords)
+            ## Critical points
+            if cpt_marker is not None:
+                pltcpt = self.cpoint
+                if len(self.cpoint) > 0:
+                    pts = mlab.points3d(self.cpoint[:,0], self.cpoint[:,1], self.cpoint[:,2],
+                                        figure=fig, color=tuple(cpt_color), mode=cpt_marker,
+                                        scale_factor=cpt_size)
+
+            ## trajectories
+            allwt = np.array([i[0] for i in self.trajectory], dtype=int)
+            alltraj = [i[1] for i in self.trajectory]
+            for wt, clr, lwid in zip(traj_weight, traj_color, traj_linewidth):
+                idx = np.where(allwt==wt)[0]
+                for i in idx:
+                    mlab.plot3d(alltraj[i][:,0], alltraj[i][:,1], alltraj[i][:,2],
+                                figure=fig, color=tuple(clr), line_width=lwid,
+                                tube_radius=None)
+        except Exception as e:
+            self._set_unit(uold)
+            raise e
+
+        self._set_unit(uold)
+        return fig
+
+    def _set_unit(self, unit):
+        """"Of no practical use."""
+        pass
 
 
 class ChargeDensity(ScalarField):
@@ -443,7 +643,7 @@ class ChargeDensity(ScalarField):
         return super().from_file(file, output, 'RHOO', source)
 
     def plot_2D(
-        self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
+        self, unit='Angstrom', levels=None, lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
         a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -463,7 +663,7 @@ class ChargeDensity(ScalarField):
                 Bohr :math:`^{-3}`. X and y axis scales are changed correspondingly.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. None for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -474,7 +674,7 @@ class ChargeDensity(ScalarField):
             colormap (str): Matplotlib colormap option. Useful only if
                 ``colorplot=True``.
             cbar_label (str): Label of colorbar. Useful only if
-                ``colorplot=True``. 'None' for no labels.
+                ``colorplot=True``. 'default' for default values and 'None' for no labels.
             a_range (list): 1\*2 range of :math:`a` axis (x, or BC) in
                 fractional coordinate.
             b_range (list): 1\*2 range of :math:`b` axis (y, or BA) in
@@ -496,14 +696,9 @@ class ChargeDensity(ScalarField):
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        if np.all(levels=='default') and unit.lower() != 'angstrom':
-            warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.",
-                 stacklevel=2)
-            unit = 'Angstrom'
-
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             if self.subtracted == False:
                 levels = np.array([0.02, 0.04, 0.08, 0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80, 200],
                                   dtype=float)
@@ -512,6 +707,10 @@ class ChargeDensity(ScalarField):
                                    -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
                                    0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
                                    0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # contour line styles
         blimit = -1e-6; rlimit = 1e-6
         if colorplot == False: cb = 'b'; stlb = 'dotted'; cr = 'r'; stlr = '-'
@@ -548,11 +747,11 @@ class ChargeDensity(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Charge Density'
+                if overlay is None: title = 'Charge Density'
                 else: title = 'Charge Density + {}'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
         return fig
@@ -564,6 +763,7 @@ class ChargeDensity(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -579,8 +779,8 @@ class ChargeDensity(ScalarField):
                 :math:`\\AA^{-3}`, 'a.u.' for Bohr:math:`^{-3}`.
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. None for default isovalues (0.01, 1, 100
+                or -1, 0, 1 for charge differences).
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -592,6 +792,9 @@ class ChargeDensity(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -636,6 +839,16 @@ class ChargeDensity(ScalarField):
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
+        # default isovalues
+        if isovalue is None:
+            if self.subtracted == False:
+                isovalue = np.array([0.01, 1., 100.], dtype=float)
+            else:
+                isovalue = np.array([-1, 0, 1], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default isovalue are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # Plot
         fig = super().plot_3D(unit,
                               isovalue=isovalue,
@@ -643,7 +856,7 @@ class ChargeDensity(ScalarField):
                               contour_2d=contour_2d,
                               interp=interp,
                               interp_size=interp_size,
-                              grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                              grid_display_range=grid_display_range,
                               **kwargs)
 
         # Final setups
@@ -726,7 +939,7 @@ class SpinDensity(ScalarField):
         return super().from_file(file, output, 'SPDE', source)
 
     def plot_2D(
-        self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
+        self, unit='Angstrom', levels=None, lineplot=True, linewidth=1.0,
         isovalues='%.4f', colorplot=False, colormap='jet', cbar_label='default',
         a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -746,7 +959,7 @@ class SpinDensity(ScalarField):
                 Bohr :math:`^{-3}`. X and y axis scales are changed correspondingly.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. 'None' for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -779,18 +992,17 @@ class SpinDensity(ScalarField):
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        if np.all(levels=='default') and unit.lower() != 'angstrom':
-            warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.",
-                 stacklevel=2)
-            unit = 'Angstrom'
-
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             levels = np.array([-80, -40, -20, -8, -4, -2, -0.8, -0.4, -0.2,
-                                -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
-                                0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
-                                0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+                               -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
+                               0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
+                               0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # contour line styles
         blimit = -1e-6; rlimit = 1e-6
         if colorplot == False: cb = 'b'; stlb = 'dotted'; cr = 'r'; stlr = '-'
@@ -827,11 +1039,11 @@ class SpinDensity(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Spin Density'
+                if overlay is None: title = 'Spin Density'
                 else: title = 'Spin Density + {}'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
         return fig
@@ -843,6 +1055,7 @@ class SpinDensity(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -858,8 +1071,7 @@ class SpinDensity(ScalarField):
                 Bohr :math:`^{-3}`.
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. None for default isovalues (-1, 0, 1).
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -871,6 +1083,9 @@ class SpinDensity(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -915,6 +1130,13 @@ class SpinDensity(ScalarField):
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
+        # default isovalues
+        if isovalue is None:
+            isovalue = np.array([-1, 0., 1], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default isovalue are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # Plot
         fig = super().plot_3D(unit,
                               isovalue=isovalue,
@@ -922,7 +1144,7 @@ class SpinDensity(ScalarField):
                               contour_2d=contour_2d,
                               interp=interp,
                               interp_size=interp_size,
-                              grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                              grid_display_range=grid_display_range,
                               **kwargs)
 
         # Final setups
@@ -1005,7 +1227,7 @@ class Gradient(ScalarField):
         return super().from_file(file, output, 'GRHO', source)
 
     def plot_2D(
-        self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
+        self, unit='Angstrom', levels=None, lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
         a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -1025,7 +1247,7 @@ class Gradient(ScalarField):
                 Bohr:math:`^{-4}`. X and y axis scales are changed correspondingly.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. 'None' for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -1058,14 +1280,9 @@ class Gradient(ScalarField):
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        if np.all(levels=='default') and unit.lower() != 'angstrom':
-            warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.",
-                 stacklevel=2)
-            unit = 'Angstrom'
-
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             if self.subtracted == False:
                 levels = np.array([0.02, 0.04, 0.08, 0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80, 200],
                                   dtype=float)
@@ -1074,6 +1291,10 @@ class Gradient(ScalarField):
                                    -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
                                    0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
                                    0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # contour line styles
         blimit = -1e-6; rlimit = 1e-6
         if colorplot == False: cb = 'b'; stlb = 'dotted'; cr = 'r'; stlr = '-'
@@ -1110,11 +1331,11 @@ class Gradient(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Density Gradient'
+                if overlay is None: title = 'Density Gradient'
                 else: title = 'Density Gradient + {}'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
         return fig
@@ -1126,6 +1347,7 @@ class Gradient(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -1141,8 +1363,8 @@ class Gradient(ScalarField):
                 :math:`\\AA^{-4}`, 'a.u.' for Bohr:math:`{-4}`.
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. None for default isovalues (0.01, 1, 100
+                or -1, 0, 1 for differences)
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -1154,6 +1376,9 @@ class Gradient(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -1198,6 +1423,16 @@ class Gradient(ScalarField):
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
+        # default isovalues
+        if isovalue is None:
+            if self.subtracted == False:
+                isovalue = np.array([0.01, 1., 100.], dtype=float)
+            else:
+                isovalue = np.array([-1, 0, 1], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default isovalue are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # Plot
         fig = super().plot_3D(unit,
                               isovalue=isovalue,
@@ -1205,7 +1440,7 @@ class Gradient(ScalarField):
                               contour_2d=contour_2d,
                               interp=interp,
                               interp_size=interp_size,
-                              grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                              grid_display_range=grid_display_range,
                               **kwargs)
 
         # Final setups
@@ -1297,7 +1532,7 @@ class Laplacian(ScalarField):
         return super().from_file(file, output, type, source)
 
     def plot_2D(
-        self, unit='Angstrom', plot_lapm=False, levels='default', lineplot=True,
+        self, unit='Angstrom', plot_lapm=False, levels=None, lineplot=True,
         linewidth=1.0, isovalues='%.2f', colorplot=False, colormap='jet',
         cbar_label='default', a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -1318,7 +1553,7 @@ class Laplacian(ScalarField):
             plot_lapm (bool): Whether to plot :math:`-\\nabla^{2}\\rho`.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. 'None' for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -1351,22 +1586,21 @@ class Laplacian(ScalarField):
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        if np.all(levels=='default') and unit.lower() != 'angstrom':
-            warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.",
-                 stacklevel=2)
-            unit = 'Angstrom'
-
         # lapm
         if plot_lapm == True:
             self.data = -self.data
 
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             levels = np.array([-80, -40, -20, -8, -4, -2, -0.8, -0.4, -0.2,
                                -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
                                0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
                                0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # contour line styles
         blimit = -1e-6; rlimit = 1e-6
         if colorplot == False:
@@ -1407,11 +1641,11 @@ class Laplacian(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Density Laplacian ({})'.format(pm)
+                if overlay is None: title = 'Density Laplacian ({})'.format(pm)
                 else: title = 'Density Laplacian ({}) + {}'.format(pm, titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
 
@@ -1428,6 +1662,7 @@ class Laplacian(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -1444,8 +1679,7 @@ class Laplacian(ScalarField):
             plot_lapm (bool): Whether to plot :math:`-\\nabla^{2}\\rho`.
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. 'None' for default isovalues (-1, 0, 1)
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -1457,6 +1691,9 @@ class Laplacian(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -1504,6 +1741,13 @@ class Laplacian(ScalarField):
         # LAPM
         if plot_lapm == True: self.data = -self.data
 
+        # default isovalues
+        if isovalue is None:
+            isovalue = np.array([-1, 0, 1], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default isovalue are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # Plot
         try:
             fig = super().plot_3D(unit,
@@ -1512,7 +1756,7 @@ class Laplacian(ScalarField):
                                   contour_2d=contour_2d,
                                   interp=interp,
                                   interp_size=interp_size,
-                                  grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                                  grid_display_range=grid_display_range,
                                   **kwargs)
             if plot_lapm == True: self.data = -self.data
 
@@ -1600,7 +1844,7 @@ class HamiltonianKE(ScalarField):
         return super().from_file(file, output, 'KKIN', source)
 
     def plot_2D(
-        self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
+        self, unit='Angstrom', levels=None, lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
         a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -1621,7 +1865,7 @@ class HamiltonianKE(ScalarField):
                 correspondingly.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. 'None' for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -1654,14 +1898,9 @@ class HamiltonianKE(ScalarField):
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        if np.all(levels=='default') and unit.lower() != 'angstrom':
-            warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.",
-                 stacklevel=2)
-            unit = 'Angstrom'
-
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             if self.subtracted == False:
                 levels = np.array([0.02, 0.04, 0.08, 0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80, 200],
                                   dtype=float)
@@ -1670,6 +1909,10 @@ class HamiltonianKE(ScalarField):
                                    -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
                                    0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
                                    0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # contour line styles
         blimit = -1e-6; rlimit = 1e-6
         if colorplot == False: cb = 'b'; stlb = 'dotted'; cr = 'r'; stlr = '-'
@@ -1706,11 +1949,11 @@ class HamiltonianKE(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Hamiltonian Kinetic Energy'
+                if overlay is None: title = 'Hamiltonian Kinetic Energy'
                 else: title = 'Hamiltonian Kinetic Energy + {}'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
         return fig
@@ -1722,6 +1965,7 @@ class HamiltonianKE(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -1737,8 +1981,8 @@ class HamiltonianKE(ScalarField):
                 for Hartree.Bohr :math:`^{-3}`.
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. None for default isovalues (0.01, 1, 100
+                or -1, 0, 1 for differences)
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -1750,6 +1994,9 @@ class HamiltonianKE(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -1794,6 +2041,16 @@ class HamiltonianKE(ScalarField):
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
+        # default isovalues
+        if isovalue is None:
+            if self.subtracted == False:
+                isovalue = np.array([0.01, 1., 100.], dtype=float)
+            else:
+                isovalue = np.array([-1, 0, 1], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default isovalue are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # Plot
         fig = super().plot_3D(unit,
                               isovalue=isovalue,
@@ -1801,7 +2058,7 @@ class HamiltonianKE(ScalarField):
                               contour_2d=contour_2d,
                               interp=interp,
                               interp_size=interp_size,
-                              grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                              grid_display_range=grid_display_range,
                               **kwargs)
 
         # Final setups
@@ -1887,7 +2144,7 @@ class LagrangianKE(ScalarField):
         return super().from_file(file, output, 'GKIN', source)
 
     def plot_2D(
-        self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
+        self, unit='Angstrom', levels=None, lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
         a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -1908,7 +2165,7 @@ class LagrangianKE(ScalarField):
                 correspondingly.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. 'None' for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -1941,14 +2198,9 @@ class LagrangianKE(ScalarField):
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        if np.all(levels=='default') and unit.lower() != 'angstrom':
-            warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.",
-                 stacklevel=2)
-            unit = 'Angstrom'
-
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             if self.subtracted == False:
                 levels = np.array([0.02, 0.04, 0.08, 0.2, 0.4, 0.8,
                                    2, 4, 8, 20, 40, 80, 200], dtype=float)
@@ -1957,6 +2209,10 @@ class LagrangianKE(ScalarField):
                                    -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
                                    0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
                                    0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # contour line styles
         blimit = -1e-6; rlimit = 1e-6
         if colorplot == False: cb = 'b'; stlb = 'dotted'; cr = 'r'; stlr = '-'
@@ -1993,11 +2249,11 @@ class LagrangianKE(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Lagrangian Kinetic Energy'
+                if overlay is None: title = 'Lagrangian Kinetic Energy'
                 else: title = 'Lagrangian Kinetic Energy + {}'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
         return fig
@@ -2009,6 +2265,7 @@ class LagrangianKE(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -2024,8 +2281,8 @@ class LagrangianKE(ScalarField):
                 for Eh.Bohr:math:`^{-3}`.
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. None for default isovalues (0.01, 1, 100
+                or -1, 0, 1 for differences)
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -2037,6 +2294,9 @@ class LagrangianKE(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -2081,6 +2341,16 @@ class LagrangianKE(ScalarField):
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
+        # default isovalues
+        if isovalue is None:
+            if self.subtracted == False:
+                isovalue = np.array([0.01, 1., 100.], dtype=float)
+            else:
+                isovalue = np.array([-1, 0, 1], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default isovalue are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # Plot
         fig = super().plot_3D(unit,
                               isovalue=isovalue,
@@ -2088,7 +2358,7 @@ class LagrangianKE(ScalarField):
                               contour_2d=contour_2d,
                               interp=interp,
                               interp_size=interp_size,
-                              grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                              grid_display_range=grid_display_range,
                               **kwargs)
 
         # Final setups
@@ -2174,7 +2444,7 @@ class VirialField(ScalarField):
         return super().from_file(file, output, 'VIRI', source)
 
     def plot_2D(
-        self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
+        self, unit='Angstrom', levels=None, lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
         a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -2195,7 +2465,7 @@ class VirialField(ScalarField):
                 correspondingly.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. 'None' for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -2228,14 +2498,9 @@ class VirialField(ScalarField):
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        if np.all(levels=='default') and unit.lower() != 'angstrom':
-            warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.",
-                 stacklevel=2)
-            unit = 'Angstrom'
-
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             if self.subtracted == False:
                 levels = -np.array([0.02, 0.04, 0.08, 0.2, 0.4, 0.8,
                                     2, 4, 8, 20, 40, 80, 200], dtype=float)
@@ -2244,6 +2509,10 @@ class VirialField(ScalarField):
                                    -0.08, -0.04, -0.02, -0.008, -0.004, -0.002,
                                    0, 0.002, 0.004, 0.008, 0.02, 0.04, 0.08,
                                    0.2, 0.4, 0.8, 2, 4, 8, 20, 40, 80], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default levels are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # contour line styles
         blimit = -1e-6; rlimit = 1e-6
         if colorplot == False: cb = 'b'; stlb = 'dotted'; cr = 'r'; stlr = '-'
@@ -2280,11 +2549,11 @@ class VirialField(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Virial Field'
+                if overlay is None: title = 'Virial Field'
                 else: title = 'Virial Field + {}'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
         return fig
@@ -2296,6 +2565,7 @@ class VirialField(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -2311,8 +2581,8 @@ class VirialField(ScalarField):
                 eV.:math:`\\AA^{-4}`, 'a.u.' for Eh.Bohr:math:`^{-4}`.
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. None for default isovalues (0.01, 1, 100
+                or -1, 0, 1 for differences)
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -2324,6 +2594,9 @@ class VirialField(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -2368,6 +2641,16 @@ class VirialField(ScalarField):
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
+        # default isovalues
+        if isovalue is None:
+            if self.subtracted == False:
+                isovalue = np.array([0.01, 1., 100.], dtype=float)
+            else:
+                isovalue = np.array([-1, 0, 1], dtype=float)
+            if unit.lower() != 'angstrom':
+                warn("Unit must be 'Angstrom' when the default isovalue are set. Using Angstrom-eV units.", stacklevel=2)
+                unit = 'Angstrom'
+
         # Plot
         fig = super().plot_3D(unit,
                               isovalue=isovalue,
@@ -2375,7 +2658,7 @@ class VirialField(ScalarField):
                               contour_2d=contour_2d,
                               interp=interp,
                               interp_size=interp_size,
-                              grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                              grid_display_range=grid_display_range,
                               **kwargs)
 
         # Final setups
@@ -2460,7 +2743,7 @@ class ELF(ScalarField):
         return super().from_file(file, output, 'ELFB', source)
 
     def plot_2D(
-        self, unit='Angstrom', levels='default', lineplot=True, linewidth=1.0,
+        self, unit='Angstrom', levels=None, lineplot=True, linewidth=1.0,
         isovalues='%.2f', colorplot=False, colormap='jet', cbar_label='default',
         a_range=[0., 1.], b_range=[0., 1.], edgeplot=False,
         x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None,
@@ -2480,7 +2763,7 @@ class ELF(ScalarField):
                 :math:`\\AA`, 'a.u.' for Bohr.
             levels (array|int): Set levels of colored / line contour plot. A
                 number for linear scaled plot colors or an array for
-                user-defined levels. 1D. 'default' for default levels.
+                user-defined levels. 1D. 'None' for default levels.
             lineplot (bool): Plot contour lines.
             contourline (list): Width of contour lines. Other styles are pre-
                 set and cannot be changed.
@@ -2514,7 +2797,8 @@ class ELF(ScalarField):
             fig (Figure): Matplotlib Figure object
         """
         # default levels
-        if np.all(levels=='default'):
+        if type(levels) == str and levels.lower() == 'default': levels=None # Compatibility
+        if levels is None:
             if self.subtracted == False:
                 levels = np.linspace(0, 1, 21)
                 blimit = 0.5-1e-6; rlimit = 0.5+1e-6
@@ -2523,6 +2807,7 @@ class ELF(ScalarField):
                                    0,
                                    0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 1.5], dtype=float)
                 blimit = -1e-6; rlimit = 1e-6
+
         # contour line styles
         if colorplot == False: cb = 'b'; stlb = 'dotted'; cr = 'r'; stlr = '-'
         else: cb = 'k'; stlb = 'dotted'; cr = 'k'; stlr = '-'
@@ -2539,7 +2824,7 @@ class ELF(ScalarField):
             else: cbar_label=r'$\Delta$ ELF'
 
         # plot
-        fig = super().plot_2D(self.unit, levels, lineplot, contourline, isovalues,
+        fig = super().plot_2D(unit, levels, lineplot, contourline, isovalues,
                               colorplot, colormap, cbar_label, a_range, b_range,
                               edgeplot, x_ticks, y_ticks, figsize, overlay, **kwargs)
 
@@ -2556,11 +2841,11 @@ class ELF(ScalarField):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
+        if title is not None:
             titles = {'TRAJGRAD' : 'Gradient Trajectory',
                       'TRAJMOLG' : 'Chemical Graph'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Electron Localization'
+                if overlay is None: title = 'Electron Localization'
                 else: title = 'Electron Localization + {}'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
         return fig
@@ -2571,6 +2856,7 @@ class ELF(ScalarField):
                 contour_2d=False,
                 interp='no interp',
                 interp_size=1,
+                grid_display_range=[[0,1], [0,1], [0,1]],
                 show_the_scene=True,
                 **kwargs):
         """
@@ -2584,8 +2870,8 @@ class ELF(ScalarField):
         Args:
             isovalue (float|array): Isovalues of 3D/2D contour plots. A number
                 or an array for user-defined values of isosurfaces, **must be
-                consistent with ``unit``**. By default half between max and min
-                values.
+                consistent with ``unit``**. None for default isovalues (0.2 0.5 0.8
+                or -0.1, 0, 0.1 for differences)
             volume_3d (bool): *3D only*. Display 3D volumetric data instead of
                 isosurfaces. ``isovalue`` is disabled.
             contour_2d (bool): *2D only* Display 2D black contour lines over
@@ -2597,6 +2883,9 @@ class ELF(ScalarField):
             interp_size (list[int]|int): The new size of interpolated data
                 (list) or a scaling factor. *Valid only when ``interp`` is not
                 'no interp'*.
+            grid_display_range (array): 3\*2 array defining the displayed
+                region of the data grid. Fractional coordinates a, b, c are
+                used but only the periodic directions are applied.
             show_the_scene (bool): Display the scene by ``mlab.show()`` and
                 return None. Otherwise return the scene object.
             \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
@@ -2641,6 +2930,13 @@ class ELF(ScalarField):
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
+        # default isovalues
+        if isovalue is None:
+            if self.subtracted == False:
+                isovalue = np.array([0.2, 0.5, 0.8], dtype=float)
+            else:
+                isovalue = np.array([-0.1, 0, 0.1], dtype=float)
+
         # Plot
         fig = super().plot_3D(unit=self.unit,
                               isovalue=isovalue,
@@ -2648,7 +2944,7 @@ class ELF(ScalarField):
                               contour_2d=contour_2d,
                               interp=interp,
                               interp_size=interp_size,
-                              grid_display_range=[[0,1], [0,1], [0,1]], # disable grid periodicity
+                              grid_display_range=grid_display_range,
                               **kwargs)
 
         # Final setups
@@ -2691,23 +2987,10 @@ class GradientTraj(Trajectory):
             point coordinates in 3D ref framework.
     """
     def __init__(self, wtraj, traj, base, struc, unit='Angstrom'):
-        if len(wtraj) != len(traj):
-            raise ValueError('Inconsistent lengths of input trajectory and its weight.')
-
-        self.trajectory = [[int(wtraj[i]), np.array(traj[i], dtype=float)]
-                           for i in range(len(wtraj))]
-        self.base = np.array(base, dtype=float)
-        self.structure = struc
-        self.type = 'TRAJGRAD'
-        self.unit = unit
-        cpt = []
-        for i in self.trajectory:
-            if len(i[1]) == 1:
-                cpt.append(i[1][0])
-        self.cpoint = np.array(cpt)
+        super().__init__(wtraj, traj, base, struc, 'TRAJGRAD', unit)
 
     @classmethod
-    def from_file(cls, file, output):
+    def from_file(cls, file, output, source='crystal'):
         """
         Generate a ``GradientTraj`` object from 'TRAJGRAD.DAT' file and the
         standard screen output of CRYSTAL 'properties' calculation.
@@ -2717,21 +3000,17 @@ class GradientTraj(Trajectory):
             Output file is mandatory.
 
         Args:
-            file (str): 'TRAJGRAD.DAT' file by TOPOND.
-            output (str): Standard output of Properties calculation, used to
-                get geometry and orientation of the plane.
+            file (str): The trajectory data.
+            output (str): Output file for the geometry and periodicity.
+            source (str): Currently not used. Saved for future development.
         Returns:
-            cls (ChargeDensity)
+            cls (GradientTraj)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
-
-        return Properties_output(output).read_topond(file, 'TRAJGRAD')
+        return super().from_file(file, output, 'TRAJGRAD', source)
 
     def plot_2D(
-        self, unit='Angstrom', cpt_marker='o', cpt_color='k', cpt_size=10,
-        traj_color='r', traj_linestyle=':', traj_linewidth=0.5, x_ticks=5,
-        y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs):
+        self, unit='Angstrom', traj_color='r', traj_linestyle=':', traj_linewidth=0.5,
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None, **kwargs):
         """
         Plot charge density gradient trajectory in a 2D plot.
 
@@ -2741,11 +3020,7 @@ class GradientTraj(Trajectory):
             ``topond.Trajectory``.
 
         Args:
-            unit (str): Plot unit. 'Angstrom' for :math:`\\AA^{-3}`, 'a.u.' for
-                Bohr :math:`^{-3}`.
-            cpt_marker (str): Marker of critical point scatter.
-            cpt_color (str): Marker color of critical point scatter.
-            cpt_size (float|int): Marker size of critical point scatter.
+            unit (str): Plot unit. 'Angstrom' for :math:`\\AA`, 'a.u.' for Bohr.
             traj_color (str): Line color of 2D trajectory plot.
             traj_linestyl (str): Line style of 2D trajectory plot.
             traj_linewidth (str): Line width of 2D trajectory plot.
@@ -2757,30 +3032,22 @@ class GradientTraj(Trajectory):
                 fixed to be equal.
             overlay (None|ScalarField): Overlapping a 2D plot from the
                 ``topond.ScalarField`` object if not None.
-            fig (Figure|None): *Developers only*, matplotlib Figure class..
-            ax_index (list[int]): *Developer Only*, indices of axes in ``fig.axes``.
-            \*\*kwargs : Other arguments passed to ``ScalarField.plot_2D()``.
+            \*\*kwargs : Other arguments passed to ``ScalarField.plot_2D()``, and
+                *developer only* arguments, ``fig`` and ``ax_index``, to pass
+                figure object and axis index.
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        uold = self.unit
-        if self.unit.lower() != unit.lower():
-            self._set_unit(unit)
-        if np.all(overlay!=None):
-            overlay._set_unit(unit)
-
-        # axis index
-        if np.all(fig!=None) and np.all(ax_index!=None):
-            iax = int(ax_index)
-        else:
-            iax = 0
-
         # plot
-        fig = super().plot_2D(cpt_marker, cpt_color, cpt_size, traj_color,
+        fig = super().plot_2D(unit, None, 'k', None, 0, traj_color,
                               traj_linestyle, traj_linewidth, x_ticks, y_ticks,
                               figsize, overlay, fig, ax_index, **kwargs)
         # labels and titles
+        if 'ax_index' in kwargs.keys():
+            iax = kwargs['ax_index']
+        else:
+            iax = 0
+
         if unit.lower() == 'angstrom':
             fig.axes[iax].set_xlabel(r'$\AA$')
             fig.axes[iax].set_ylabel(r'$\AA$')
@@ -2788,23 +3055,85 @@ class GradientTraj(Trajectory):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
-            titles = {'SURFRHOO' : 'Charge Density',
-                      'SURFSPDE' : 'Spin Density',
-                      'SURFGRHO' : 'Density Gradient',
-                      'SURFLAPP' : 'Density Laplacian',
-                      'SURFKKIN' : 'Hamiltonian Kinetic Eenergy',
-                      'SURFGKIN' : 'Lagrangian Kinetic Eenergy',
-                      'SURFVIRI' : 'Virial Field',
-                      'SURFELFB' : 'Electron Localization'}
+        if title is not None:
+            titles = {'RHOO' : 'Charge Density',
+                      'SPDE' : 'Spin Density',
+                      'GRHO' : 'Density Gradient',
+                      'LAPP' : 'Density Laplacian',
+                      'KKIN' : 'Hamiltonian Kinetic Eenergy',
+                      'GKIN' : 'Lagrangian Kinetic Eenergy',
+                      'VIRI' : 'Virial Field',
+                      'ELFB' : 'Electron Localization'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Gradient Trajectory'
+                if overlay is None: title = 'Gradient Trajectory'
                 else: title = '{} + Gradient Trajectory'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
 
-        self._set_unit(uold)
-        if np.all(overlay!=None): overlay._set_unit(uold)
         return fig
+
+    def plot_3D(self,
+                traj_color=(1., 0., 0.),
+                traj_linewidth=1.5,
+                show_the_scene=True,
+                **kwargs):
+        """
+        Plot 3D chemical graph with atomic structures. The plot unit is 'Angstrom'.
+        Unit conversion is automatically performed.
+
+        Args:
+            traj_color (tuple): 1\*3 tuple of plotted trajectory colors.
+            traj_linewidth (float): Linewidth of trajectories.
+            \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
+                Allowed keywords are listed below.
+            atom_color (str): Color map of atoms. 'jmol' or 'cpk'.
+            bond_color (turple): Color of bonds, in a 1\*3 RGB turple from 0 to 1.
+            atom_bond_ratio (str): 'balls', 'large', 'medium', 'small' or
+                'sticks'. The relative sizes of balls and sticks.
+            cell_display (bool): Display lattice boundaries (at \[0., 0., 0.\] only).
+            cell_color (turple): Color of lattice boundaries, in a 1\*3 RGB turple from 0 to 1.
+            cell_linewidth (float): Linewidth of plotted lattice boundaries.
+            display_range (array): 3\*2 array defining the displayed region of
+                the structure. Fractional coordinates a, b, c are used but only
+                the periodic directions are applied.
+            scale (float): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+            special_bonds (dict): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+            azimuth: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            elevation: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            distance: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+                By default set to 'auto'.
+            focalpoint: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            roll: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+        Returns:
+            fig: MayaVi scence object, if ``show_the_scene=False``.
+        """
+        try:
+            from mayavi import mlab
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
+        # Plot
+        fig = super().plot_3D(unit='Angstrom',
+                              cpt_marker=None,
+                              cpt_color=(0.35, 0.35, 0.35),
+                              cpt_size=None,
+                              traj_weight=0,
+                              traj_color=traj_color,
+                              traj_linewidth=traj_linewidth,
+                              **kwargs)
+
+        # Final setups
+        keys = ['azimuth', 'elevation', 'distance', 'focalpoint', 'roll']
+        keywords = dict(figure=fig, distance='auto')
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+        mlab.view(**keywords)
+        mlab.gcf().scene.parallel_projection = True
+
+        if show_the_scene == False:
+            return fig
+        else:
+            mlab.show()
+            return
 
     def _set_unit(self, unit):
         """
@@ -2825,7 +3154,7 @@ class GradientTraj(Trajectory):
         else:
             raise ValueError('Unknown unit.')
 
-        lprops = ['base', 'cpoint'] # length units
+        lprops = ['cpoint'] # length units
         for l in lprops:
             newattr = getattr(self, l) * cst
             setattr(self, l, newattr)
@@ -2837,7 +3166,8 @@ class GradientTraj(Trajectory):
 class ChemicalGraph(Trajectory):
     """
     The molecular / crystal graph object from TOPOND. Unit: 'Angstrom' for
-    :math:`\\AA` and 'a.u.' for Bohr.
+    :math:`\\AA` and 'a.u.' for Bohr. Also compatible with chemical graph + 
+    gradient trajectories.
 
     Args:
         wtraj (list[int]): 1\*nPath, weight of the path, int 0 to 3.
@@ -2854,23 +3184,10 @@ class ChemicalGraph(Trajectory):
             critical point coordinates in 3D ref framework.
     """
     def __init__(self, wtraj, traj, base, struc, unit='Angstrom'):
-        if len(wtraj) != len(traj):
-            raise ValueError('Inconsistent lengths of input trajectory and its weight.')
-
-        self.trajectory = [[int(wtraj[i]), np.array(traj[i], dtype=float)]
-                           for i in range(len(wtraj))]
-        self.base = np.array(base, dtype=float)
-        self.structure = struc
-        self.type = 'TRAJMOLG'
-        self.unit = unit
-        cpt = []
-        for i in self.trajectory:
-            if len(i[1]) == 1:
-                cpt.append(i[1][0])
-        self.cpoint = np.array(cpt)
+        super().__init__(wtraj, traj, base, struc, 'TRAJGRAD', unit)
 
     @classmethod
-    def from_file(cls, file, output):
+    def from_file(cls, file, output, source='crystal'):
         """
         Generate a ``ChemicalGraph`` object from 'TRAJMOLG.DAT' file and the
         standard screen output of CRYSTAL 'properties' calculation.
@@ -2880,21 +3197,18 @@ class ChemicalGraph(Trajectory):
             Output file is mandatory.
 
         Args:
-            file (str): 'TRAJMOLG.DAT' file by TOPOND.
-            output (str): Standard output of Properties calculation, used to
-                get geometry and orientation of the plane.
+            file (str): The trajectory data.
+            output (str): Output file for the geometry and periodicity.
+            source (str): Currently not used. Saved for future development.
         Returns:
-            cls (ChargeDensity)
+            cls (ChemicalGraph)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
-
-        return Properties_output(output).read_topond(file, 'TRAJMOLG')
+        return super().from_file(file, output, 'TRAJMOLG', source)
 
     def plot_2D(
         self, unit='Angstrom', cpt_marker='o', cpt_color='k', cpt_size=10,
-        traj_color='r', traj_linestyle=':', traj_linewidth=0.5, x_ticks=5,
-        y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None, fig=None,
-        ax_index=None, **kwargs):
+        traj_weight=[0,1,2,3], traj_color='default', traj_linestyle='default', traj_linewidth='default',
+        x_ticks=5, y_ticks=5, title='default', figsize=[6.4, 4.8], overlay=None, **kwargs):
         """
         Plot crystal / molecular graph in a 2D plot.
 
@@ -2904,14 +3218,20 @@ class ChemicalGraph(Trajectory):
             ``topond.Trajectory``.
 
         Args:
-            unit (str): Plot unit. 'Angstrom' for :math:`\\AA^{-3}`, 'a.u.' for
-                Bohr :math:`^{-3}`.
-            cpt_marker (str): Marker of critical point scatter.
+            unit (str): Plot unit. 'Angstrom' for :math:`\\AA`, 'a.u.' for Bohr.
+            cpt_marker (str): Marker of critical point scatter. 'None' to turn
+                off critical point plotting.
             cpt_color (str): Marker color of critical point scatter.
             cpt_size (float|int): Marker size of critical point scatter.
-            traj_color (str): Line color of 2D trajectory plot.
-            traj_linestyl (str): Line style of 2D trajectory plot.
-            traj_linewidth (str): Line width of 2D trajectory plot.
+            traj_weight (int|list): Weight(s) of the plotted trajectories (0 to 3).
+            traj_color (str|list): 1\*nTraj_weight list of plotted trajectory
+                colors. Use string for the same color. 'default' for default
+                styles, 'cpt_color' for weight = 3 and 'r' for others.
+            traj_linestyle (str|list): 1\*nTraj_weight list of plotted trajectory
+                styles. Use string for the same style. 'default' for default
+                styles. 'solid' for weight = 3 and 'dotted' for others.
+            traj_linewidth (str): Line width of 2D trajectory plot. 'default'
+                for default styles. 1.0 for weight = 3 and 0.5 for others.
             x_ticks (int): Number of ticks on x axis.
             y_ticks (int): Number of ticks on y axis.
             title (str|None): Plot title. 'default' for proeprty plotted.
@@ -2920,30 +3240,22 @@ class ChemicalGraph(Trajectory):
                 fixed to be equal.
             overlay (None|ScalarField): Overlapping a 2D plot from the
                 ``topond.ScalarField`` object if not None.
-            fig (Figure|None): *Developers only*, matplotlib Figure class..
-            ax_index (list[int]): *Developer Only*, indices of axes in ``fig.axes``.
-            \*\*kwargs : Other arguments passed to ``ScalarField.plot_2D()``.
+            \*\*kwargs : Other arguments passed to ``ScalarField.plot_2D()``, and
+                *developer only* arguments, ``fig`` and ``ax_index``, to pass
+                figure object and axis index.
         Returns:
             fig (Figure): Matplotlib Figure object
         """
-        # unit
-        uold = self.unit
-        if self.unit.lower() != unit.lower():
-            self._set_unit(unit)
-        if np.all(overlay!=None):
-            overlay._set_unit(unit)
-
-        # axis index
-        if np.all(fig!=None) and np.all(ax_index!=None):
-            iax = int(ax_index)
+        # plot
+        fig = super().plot_2D(unit, cpt_marker, cpt_color, cpt_size, traj_weight,
+                              traj_color, traj_linestyle, traj_linewidth,
+                              x_ticks, y_ticks, figsize, overlay, **kwargs)
+        # labels and titles
+        if 'ax_index' in kwargs.keys():
+            iax = kwargs['ax_index']
         else:
             iax = 0
 
-        # plot
-        fig = super().plot_2D(cpt_marker, cpt_color, cpt_size, traj_color,
-                              traj_linestyle, traj_linewidth, x_ticks, y_ticks,
-                              figsize, overlay, fig, ax_index, **kwargs)
-        # labels and titles
         if unit.lower() == 'angstrom':
             fig.axes[iax].set_xlabel(r'$\AA$')
             fig.axes[iax].set_ylabel(r'$\AA$')
@@ -2951,23 +3263,101 @@ class ChemicalGraph(Trajectory):
             fig.axes[iax].set_xlabel(r'$Bohr$')
             fig.axes[iax].set_ylabel(r'$Bohr$')
 
-        if np.all(title!=None):
-            titles = {'SURFRHOO' : 'Charge Density',
-                      'SURFSPDE' : 'Spin Density',
-                      'SURFGRHO' : 'Density Gradient',
-                      'SURFLAPP' : 'Density Laplacian',
-                      'SURFKKIN' : 'Hamiltonian Kinetic Eenergy',
-                      'SURFGKIN' : 'Lagrangian Kinetic Eenergy',
-                      'SURFVIRI' : 'Virial Field',
-                      'SURFELFB' : 'Electron Localization'}
+        if title is not None:
+            titles = {'RHOO' : 'Charge Density',
+                      'SPDE' : 'Spin Density',
+                      'GRHO' : 'Density Gradient',
+                      'LAPP' : 'Density Laplacian',
+                      'KKIN' : 'Hamiltonian Kinetic Eenergy',
+                      'GKIN' : 'Lagrangian Kinetic Eenergy',
+                      'VIRI' : 'Virial Field',
+                      'ELFB' : 'Electron Localization'}
             if title == 'default':
-                if np.all(overlay==None): title = 'Chemical Graph'
+                if overlay is None: title = 'Chemical Graph'
                 else: title = '{} + Chemical Graph'.format(titles[overlay.type.upper()])
             fig.axes[iax].set_title(title)
 
-        self._set_unit(uold)
-        if np.all(overlay!=None): overlay._set_unit(uold)
         return fig
+
+    def plot_3D(self,
+                cpt_marker='sphere',
+                cpt_color=(0.35, 0.35, 0.35),
+                cpt_size=0.5,
+                traj_weight=3,
+                traj_color='default',
+                traj_linewidth='default',
+                show_the_scene=True,
+                **kwargs):
+        """
+        Plot 3D chemical graph with atomic structures. The plot unit is 'Angstrom'.
+        Unit conversion is automatically performed.
+
+        Args:
+            cpt_marker (string): The mode of the glyphs. Passed to ``mode`` of
+                mayavi ``mlab.points3d()``. Accepted values: '2darrow',
+                '2dcircle', '2dcross', '2ddash', '2ddiamond', '2dhooked_arrow',
+                '2dsquare', '2dthick_arrow', '2dthick_cross', '2dtriangle',
+                '2dvertex’, 'arrow', 'axes', 'cone', 'cube', 'cylinder', 'point',
+                'sphere'. 'None' to turn off critical point plotting.
+            cpt_color (tuple): 1\*3 1D tuple for the color of critical points.
+            cpt_size (float): Size of critical points.
+            traj_weight (int|list): Weight(s) of the plotted trajectories (0 to 3).
+            traj_color (tuple|str): nTraj_weight\*3 list of plotted trajectory
+                colors. Use 1\*3 1D tuple for the same color. 'default' for default
+                styles, 'cpt_color' for weight = 3 and '(1,0,0)' for others.
+            traj_linewidth (float): Linewidth of trajectories. 'default' for default
+                styles, 3.0 for weight = 3 and 1.5 for others.
+            \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
+                Allowed keywords are listed below.
+            atom_color (str): Color map of atoms. 'jmol' or 'cpk'.
+            bond_color (turple): Color of bonds, in a 1\*3 RGB turple from 0 to 1.
+            atom_bond_ratio (str): 'balls', 'large', 'medium', 'small' or
+                'sticks'. The relative sizes of balls and sticks.
+            cell_display (bool): Display lattice boundaries (at \[0., 0., 0.\] only).
+            cell_color (turple): Color of lattice boundaries, in a 1\*3 RGB turple from 0 to 1.
+            cell_linewidth (float): Linewidth of plotted lattice boundaries.
+            display_range (array): 3\*2 array defining the displayed region of
+                the structure. Fractional coordinates a, b, c are used but only
+                the periodic directions are applied.
+            scale (float): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+            special_bonds (dict): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+            azimuth: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            elevation: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            distance: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+                By default set to 'auto'.
+            focalpoint: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+            roll: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
+        Returns:
+            fig: MayaVi scence object, if ``show_the_scene=False``.
+        """
+        try:
+            from mayavi import mlab
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
+        # Plot
+        fig = super().plot_3D(unit='Angstrom',
+                              cpt_marker=cpt_marker,
+                              cpt_color=cpt_color,
+                              cpt_size=cpt_size,
+                              traj_weight=traj_weight,
+                              traj_color=traj_color,
+                              traj_linewidth=traj_linewidth,
+                              **kwargs)
+
+        # Final setups
+        keys = ['azimuth', 'elevation', 'distance', 'focalpoint', 'roll']
+        keywords = dict(figure=fig, distance='auto')
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+        mlab.view(**keywords)
+        mlab.gcf().scene.parallel_projection = True
+
+        if show_the_scene == False:
+            return fig
+        else:
+            mlab.show()
+            return
 
     def _set_unit(self, unit):
         """
@@ -2988,12 +3378,11 @@ class ChemicalGraph(Trajectory):
         else:
             raise ValueError('Unknown unit.')
 
-        lprops = ['base', 'cpoint'] # length units
+        lprops = ['cpoint'] # length units
         for l in lprops:
             newattr = getattr(self, l) * cst
             setattr(self, l, newattr)
         # special: trajectory
         self.trajectory = [[i[0], i[1]*cst] for i in self.trajectory]
         return self
-
 

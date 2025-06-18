@@ -1,32 +1,3 @@
-Pre-Calc Summary
---------------------------------------------
-  date:                Sun Jul 21 15:19:39 BST 2024
-  hostname:            IC-5CD3124HGQ
-  system:              Linux IC-5CD3124HGQ 5.15.153.1-microsoft-standard-WSL2 #1 SMP Fri Mar 29 23:14:13 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
-  user:                spica-vir
-  input:               /home/spica-vir/topond_test/urea_crys_plt.d3
-  output:              /home/spica-vir/topond_test/urea_crys_plt.out
-  temporary directory: /home/spica-vir/topond_test/urea_crys_plt_tmpfile
-  executable script:   /mnt/c/Users/hz1420/Documents/GitHub/Spica-Vir/HPC-job-submission/PC-Job-Submission/run_job
-  executable dir:      module load CRYSTAL/23v1.0.1-intel
-  mpi + exe command:   mpiexec -np 6 Pproperties
--------------------------------------------
-
-Find input data: /home/spica-vir/topond_test/urea_crys_plt.d3
-Find input reference: /home/spica-vir/topond_test/urea_crys.f9
-Find input reference: /home/spica-vir/topond_test/urea_crys.f9
-All files are synchonised.
-
-Job Ready to Go
--------------------------------------------
-  Job name       : urea_crys_plt
-  Command        : mpiexec -np 6 Pproperties >> /home/spica-vir/topond_test/urea_crys_plt.out 2>&1
-  Temporary dir  : /home/spica-vir/topond_test/urea_crys_plt_tmpfile
-  List of files  : total 676
--rw-r--r-- 1 spica-vir spica-vir    163 Jul 21 15:19 INPUT
--rw-r--r-- 1 spica-vir spica-vir   7554 Jul 21 15:19 Job_script_urea_crys_plt
--rw-r--r-- 1 spica-vir spica-vir 336100 Jul 21 15:19 fort.20
--rw-r--r-- 1 spica-vir spica-vir 336100 Jul 21 15:19 fort.9
   Input script   :
 TOPO
 PL2D
@@ -627,19 +598,3 @@ NODE    5 CPU TIME =        19.459
   TRAJMOLG.DAT         urea_crys_plt.TRAJMOLG                                2528244  Jul 21 15:19
   P2DCRYIN.DAT         urea_crys_plt.P2DCRYIN                                7756     Jul 21 15:19
 --------------------------------------------
-
-Temporary Directory Disk Info
---------------------------------------------
-  Temporary directory      : /home/spica-vir/topond_test/urea_crys_plt_tmpfile
-
-  Disk usage (df -h)
-Filesystem      Size  Used Avail Use% Mounted on
-/dev/sdc        251G   38G  201G  16% /
-
-  Usage by folders (du -m)
-14	/home/spica-vir/topond_test/urea_crys_plt_tmpfile
-
-  Detailed file list (ls -l .)
-    see /home/spica-vir/topond_test/urea_crys_plt.log file
---------------------------------------------
-
