@@ -712,13 +712,13 @@ def GridCoordinates(base, shape, meshgrid):
     if meshgrid == False:
         coords = []
         for i in range(ndim):
-            frac = np.linspace(0, 1, shape[i], endpoint=False).reshape([-1, 1])
+            frac = np.linspace(0, 1, shape[i]).reshape([-1, 1])
             coords.append(np.add(frac @ [basev[i]], base[0]))
     else:
         fcoords = []
         for i in range(ndim):
             fcoords.append(
-                np.linspace(0, 1, shape[i], endpoint=False).reshape([-1, 1])
+                np.linspace(0, 1, shape[i]).reshape([-1, 1])
             )
         coords = np.meshgrid(*fcoords, indexing='ij'); del fcoords
         coords = np.vstack([i.flatten() for i in coords]).T
@@ -785,10 +785,10 @@ def GridExpand(base, data, display_range):
         oldidx2 = np.arange(origin[1], end[1], 1)
         oldidx2 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[1]
         oldidx3 = np.arange(origin[2], end[2], 1)
-        oldidx3 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[2]
+        oldidx3 = np.sign(oldidx3) * np.abs(oldidx3) % data.shape[2]
         for i, oi in enumerate(oldidx1):
             for j, oj in enumerate(oldidx2):
-                for k, ok in enumerate(oldidx2):
+                for k, ok in enumerate(oldidx3):
                     newdata[i, j, k] = data[oi, oj, ok]
     else:
         oldidx1 = np.arange(origin[0], end[0], 1)
@@ -899,8 +899,8 @@ def GridRectangle2D(base, data):
     cosab = np.cos(theta)
     sinab = np.sin(theta)
 
-    X, Y = np.meshgrid(np.linspace(0, lena, data.shape[0], endpoint=False),
-                       np.linspace(0, lenb, data.shape[1], endpoint=False),
+    X, Y = np.meshgrid(np.linspace(0, lena, data.shape[0]),
+                       np.linspace(0, lenb, data.shape[1]),
                        indexing='ij')
     X = np.round(cosab*Y + X, 12)
     Y = np.round(sinab*Y, 12)
@@ -1053,15 +1053,14 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
             origin = (origin[0], origin[0], origin[0])
 
         if ndim == 3:
-            spacing = (bvnorm[0]/data.shape[0],
-                       bvnorm[1]/data.shape[1],
-                       bvnorm[2]/data.shape[2])
+            spacing = (bvnorm[0]/(data.shape[0]-1),
+                       bvnorm[1]/(data.shape[1]-1),
+                       bvnorm[2]/(data.shape[2]-1))
         else:
-            spacing = (bvnorm[0]/data.shape[0],
-                       bvnorm[1]/data.shape[1], 1.)
+            spacing = (bvnorm[0]/(data.shape[0]-1),
+                       bvnorm[1]/(data.shape[1]-1), 1.)
         grid = tvtk.ImageData(spacing=spacing, origin=origin)
-        data = np.transpose(data) # To z, y, x as required by vtk
-        grid.point_data.scalars = data.flatten()
+        grid.point_data.scalars = data.flatten(order='F')
         grid.point_data.scalars.name = 'scalars'
         grid.dimensions = data.shape
 
@@ -1177,7 +1176,7 @@ def plot_2Dscalar(fig, ax, data, base, levels, contourline, isovalue, colormap, 
         ax (Axes): Matplotlib Axes object
         data (array): 2D map data, in nY\*nX,
         base (array): 3\*3 Cartesian coordinates of points A, B, C to define a
-            2D map. Vectors BA and BC are used.
+            2D map. Vectors BC (X) and BA (Y) are used.
         levels (array|None): Contour line / color isovalues. It also defines
             the range of data.
         contourline (list|None): If not None, set line styles and colors of
@@ -1626,6 +1625,157 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
 
     return fig
 
+
+#------------------ 3D structure + 2D/3D fields based on MayaVi---------------#
+
+
+def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
+                    interp, interp_size, grid_display_range, **kwargs):
+    """
+    Visualize 2D or 3D scalar fields with 3D atomic structures.
+
+    Args:
+        struc (CStructure): CRYSTALpytools extended structure object.
+        base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
+            base vectors BC, BA (2D) or OA, OB, OC (3D). The sequence is (O),
+            A, B, C.
+        data (array): 2D (3D) Plot data. (nZ\*)nY\*nX.
+        isovalue (float|array): Isovalues of 3D/2D contour plots. A number
+            or an array for user-defined values of isosurfaces. By default
+            half between max and min values.
+        volume_3d (bool): *3D only*. Display 3D volumetric data instead of
+            isosurfaces.
+        contour_2d (bool): *2D only* Display 2D black contour lines over
+            colored contour surfaces.
+        interp (str): Interpolate data to smoothen the plot. 'no interp' or
+            'linear', 'nearest', 'slinear', 'cubic'. Interpolation is not saved.
+        interp_size (list[int]|int): The new size of interpolated data.
+        grid_display_range (array): 3\*2 array defining the displayed
+            region of the data grid. Not used for default TOPOND outputs.
+        \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
+            Allowed keywords are listed below.
+        colormap (turple|str): Colormap of isosurfaces/heatmaps. Or a 1\*3
+            RGB turple from 0 to 1 to define colors. *Not for volume_3d=True*.
+        opacity (float): Opacity from 0 to 1. For ``volume_3d=True``, that
+            defines the opacity of the maximum value. The opacity of the
+            minimum is half of it.
+        transparent (bool): Scalar-dependent opacity. *Not for volume_3d=True*.
+        color (turple): Color of contour lines. *'contour_2d=True' only*.
+        line_width (float): Width of 2D contour lines. *'contour_2d=True' only*.
+        vmax (float): Maximum value of colormap.
+        vmin (float): Minimum value of colormap.
+        title (str): Colorbar title.
+        orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
+        nb_labels (int): The number of labels to display on the colorbar.
+        label_fmt (str): The string formater for the labels, e.g., '%.1f'.
+        atom_color (str): Color map of atoms. 'jmol' or 'cpk'.
+        bond_color (turple): Color of bonds, in a 1\*3 RGB turple from 0 to 1.
+        atom_bond_ratio (str): 'balls', 'large', 'medium', 'small' or
+            'sticks'. The relative sizes of balls and sticks.
+        cell_display (bool): Display lattice boundaries (at \[0., 0., 0.\] only).
+        cell_color (turple): Color of lattice boundaries, in a 1\*3 RGB turple from 0 to 1.
+        cell_linewidth (float): Linewidth of plotted lattice boundaries.
+        display_range (array): 3\*2 array defining the displayed region of
+            the structure. Fractional coordinates a, b, c are used but only
+            the periodic directions are applied.
+        scale (float): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+        special_bonds (dict): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+    Returns:
+        fig: MayaVi scence object, if ``show_the_scene=False``.
+    """
+    from CRYSTALpytools.geometry import CStructure
+
+    # Input processing and sanity check
+    if not isinstance(struc, CStructure):
+        raise Exception("Geometry information must be saved as the CRYSTALpytools CStructure object.")
+
+    if data.ndim != 2 and data.ndim != 3:
+        raise Exception('Not a 3D/2D scalar field object.')
+
+    if data.ndim != base.shape[0]-1:
+        raise Exception("Inconsistent dimensionalities of data grid and base vector (should be data's + 1). Data {:d}, Base {:d}.".format(
+            data.ndim, base.shape[0]))
+
+    if np.all(isovalue==None):
+        isovalue = (np.max(data) + np.min(data)) * 0.5
+    isovalue = np.array(isovalue, ndmin=1, dtype=float)
+    if isovalue.ndim > 1: raise Exception('Values of isosurfaces must be a 1D array.')
+
+    interp = interp.lower()
+    if interp not in ['no interp', 'linear', 'nearest', 'slinear', 'cubic']:
+        raise ValueError("Unknown interpolation method : '{}'.".format(interp))
+    if volume_3d == True:
+        interp = 'no interp' # not using GridInterpolate.
+
+    # Expansion, check periodicity
+    grid_display_range = np.array(grid_display_range, dtype=float)
+    if data.ndim == 2 and len(grid_display_range) > 2:
+        if grid_display_range[2, 0] != 0 or grid_display_range[2, 1] != 1:
+            warn("For 2D data grid, a 2x2 display range should be defined. Using the first two elements.",
+                 stacklevel=2)
+        grid_display_range = grid_display_range[0:2]
+    if len(grid_display_range) != data.ndim:
+        raise Exception("Grid display range must have the same dimensionality as grid data.")
+
+    if 'display_range' in kwargs.keys():
+        display_range = np.array(kwargs['display_range'], dtype=float)
+    else:
+        display_range = np.array([[0,1], [0,1], [0,1]], dtype=float)
+
+    if np.any(struc.pbc==False):
+        idir = np.where(struc.pbc==False)[0]
+        display_range[idir] = [0., 1.]
+
+    idx = np.where(display_range[:,1]-display_range[:,0]<1e-4)[0]
+    if len(idx) > 0:
+        direct = ['x', 'y', 'z'][idx[0]]
+        raise Exception("Structure display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
+            direct, direct, display_range[idx[0], 0], direct, display_range[idx[0], 1]))
+    idx = np.where(grid_display_range[:,1]-grid_display_range[:,0]<1e-4)[0]
+    if len(idx) > 0:
+        direct = ['x', 'y', 'z'][idx[0]]
+        raise Exception("Grid display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
+            direct, direct, grid_display_range[idx[0], 0], direct, grid_display_range[idx[0], 1]))
+
+    # Plot structure
+    keys = ['atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
+            'cell_color', 'cell_linewidth', 'scale', 'special_bonds']
+    keywords = dict(show_the_scene=False, display_range=display_range)
+    for k, v in zip(kwargs.keys(), kwargs.values()):
+        if k in keys: keywords[k] = v
+
+    fig = struc.visualize(**keywords)
+
+    # Plot data
+    keys = ['colormap', 'opacity', 'transparent', 'line_width', 'color',
+            'vmax', 'vmin', 'title', 'orientation', 'nb_labels', 'label_fmt']
+    if data.ndim == 3: # 3D isosurfaces
+        keywords = dict(fig=fig,
+                        base=base,
+                        data=data,
+                        isovalue=isovalue,
+                        volume_3d=volume_3d,
+                        interp=interp,
+                        interp_size=interp_size,
+                        display_range=grid_display_range)
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+
+        fig = plot_3Dscalar(**keywords)
+    else: # 2D contour plots
+        keywords = dict(fig=fig,
+                        base=base,
+                        data=data,
+                        levels=isovalue,
+                        contour_2d=contour_2d,
+                        interp=interp,
+                        interp_size=interp_size,
+                        display_range=grid_display_range)
+        for k, v in zip(kwargs.keys(), kwargs.values()):
+            if k in keys: keywords[k] = v
+
+        fig = plot_3Dplane(**keywords)
+    return fig
 
 #-----------------------------------------------------------------------------#
 # Note: The following function passed tests of Mayavi examples, but not the   #

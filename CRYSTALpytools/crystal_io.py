@@ -4,13 +4,14 @@
 Objects of input / output files of CRYSTAL. Methods to edit or subtract data
 from corresponding files are provided.
 """
+import numpy as np
+from warnings import warn
+
 from CRYSTALpytools import units
 from CRYSTALpytools.base.crysd12 import Crystal_inputBASE
 from CRYSTALpytools.base.propd3 import Properties_inputBASE
 from CRYSTALpytools.base.output import POutBASE
 from CRYSTALpytools.geometry import Crystal_gui
-
-import numpy as np
 
 
 class Crystal_input(Crystal_inputBASE):
@@ -2681,6 +2682,7 @@ class Properties_output(POutBASE):
 
     def __init__(self, properties_output=None):
         import os
+        import pandas as pd
 
         if np.all(properties_output!=None):
             self.file_name = properties_output
@@ -2695,6 +2697,7 @@ class Properties_output(POutBASE):
 
                 # title (named "title" only to distinguish from "file_name" which means another thing)
                 self.title = os.path.split(properties_output)[1]
+                self.df = pd.DataFrame(self.data)
 
             except:
                 raise FileNotFoundError('EXITING: a CRYSTAL properties file needs to be specified')
@@ -2818,11 +2821,11 @@ class Properties_output(POutBASE):
 
     def read_topond(self, topondfile, type='infer'):
         """
-        Read the 2D scalar plot files ('SURF\*.DAT') or trajectory files
+        Read the scalar field ('SURF\*.DAT'/'3D\*.DAT') or trajectory files
         (TRAJ\*.DAT) written by `TOPOND <https://www.crystal.unito.it/topond.html>`_.
 
         Geometry information is printed in the standard ouput, which is not
-        mandatory for 'SURF\*.DAT' but is mandatory for 'TRAJ\*.DAT'
+        mandatory for 'SURF\*.DAT' but is mandatory for 'TRAJ\*.DAT' and '3D\*.DAT'.
 
         .. note::
 
@@ -2830,14 +2833,13 @@ class Properties_output(POutBASE):
             the correct type for your input file. By default `type='infer'` will
             search for (case insensitive) the following strings:
 
-            'SURFRHOO', 'SURFSPDE', 'SURFLAPP', 'SURFLAPM', 'SURFGRHO',
-            'SURFKKIN', 'SURFGKIN', 'SURFVIRI', 'SURFELFB', 'TRAJGRAD',
-            'TRAJMOLG'.
+            'RHOO', 'SPDE', 'LAPP', 'LAPM', 'GRHO', 'KKIN', 'GKIN', 'VIRI', 'ELFB',
+            'TRAJGRAD', 'TRAJMOLG'.
 
             For their meanings, please refer `TOPOND manual <https://www.crystal.unito.it/include/manuals/topond.pdf>`_.
 
         Args:
-            topondfile (str): TOPOND formatted 2D plot file
+            topondfile (str): TOPOND formatted plot file
             type (str): 'infer' or specified. Otherwise warning will be given.
 
         Returns:
@@ -2847,79 +2849,101 @@ class Properties_output(POutBASE):
                 ``self.TOPOND``. A ``topond.ChargeDensity`` or
                 ``topond.GradientTraj`` class is generated.
         """
-        import warnings
-        from CRYSTALpytools.base.extfmt import TOPONDParser
+        from CRYSTALpytools.base.extfmt import TOPONDParser, CUBEParser
         from CRYSTALpytools.topond import \
             ChargeDensity, SpinDensity, Gradient, Laplacian, HamiltonianKE, \
             LagrangianKE, VirialField, ELF, GradientTraj, ChemicalGraph
 
-        surflist = ['SURFRHOO', 'SURFSPDE', 'SURFLAPP', 'SURFLAPM', 'SURFGRHO',
-                    'SURFKKIN', 'SURFGKIN', 'SURFVIRI', 'SURFELFB']
-        trajlist = ['TRAJGRAD', 'TRAJMOLG']
+        typelist = ['RHOO', 'SPDE', 'LAPP', 'LAPM', 'GRHO', 'KKIN', 'GKIN',
+                    'VIRI', 'ELFB', 'TRAJGRAD', 'TRAJMOLG']
 
         if type.lower() == 'infer':
             type = topondfile.upper()
         else:
             type = type.upper()
 
-        issurf = False; istraj = False
-        for t in surflist:
-            if t in type: issurf = True; type = t; break
-        for t in trajlist:
-            if t in type: istraj = True; type = t; break
+        category = 'unknown'
+        for t in typelist:
+            if t in type:
+                if 'TRAJ' not in t:
+                    type = t
+                    file = open(topondfile, 'r')
+                    header = file.readline()
+                    if 'DSAA' in header: category = '2Dscale'
+                    elif 'GAUSSIAN CUBE FORMAT' in header: category = '3Dscale'
+                    else: raise Exception("The file is not in any known format of the type '{}'.".format(type))
+                    break
+                else:
+                    type = t
+                    category = 'traj'
+                    break
 
-        # still need to distinguish surf and traj
-        if issurf==False and istraj==False:
-            warnings.warn("Unknown type string / filename does not contian type string.",
-                          stacklevel=2)
+        if category=='unknown':
+            warn("Unknown type string / filename does not contian type string.",
+                 stacklevel=2)
             type = 'unknown'
+            # still need to distinguish 3D, surf and traj
             file = open(topondfile, 'r')
             header = file.readline()
             file.close()
-            if 'DSAA' in header: issurf = True
-            else: istraj = True
+            if 'DSAA' in header: category = '2Dscale'
+            elif 'GAUSSIAN CUBE FORMAT' in header: category = '3Dscale'
+            else: category = 'traj'
 
-        if issurf == True:
-            _, a, b, c, _, _, map, unit = TOPONDParser.contour2D(topondfile)
-            if not hasattr(self, 'file_name'):
-                warnings.warn('Properties output file not found: Geometry not available',
-                              stacklevel=2)
-                struc = None
-                # The a, b, c by are dummy base vectors. Info in 3D space lost.
-                base = np.vstack([a, b, c])
+        if category == '2Dscale' or category == '3Dscale':
+            if category == '2Dscale':
+                _, a, b, c, _, _, map, unit = TOPONDParser.contour2D(topondfile)
+                if not hasattr(self, 'file_name'):
+                    warn('Properties output file not found: Geometry not available',
+                         stacklevel=2)
+                    struc = None
+                    # The a, b, c by are dummy base vectors. Info in 3D space lost.
+                    base = np.vstack([a, b, c])
+                else:
+                    struc = super().get_geometry()
+                    # no 2D atom plot currently, though read method is given
+                    _, base = super().get_topond_geometry()
+                map = map[:,:,0]
+                base = units.au_to_angstrom(base) # Commensurate with structure.
             else:
-                struc = super().get_geometry()
-                # no atom plot currently, though read method is given
+                if not hasattr(self, 'file_name'):
+                    raise Exception('Properties output file is mandatory for TOPOND 3D files.')
+
+                _, _, _, _, _, map, unit = CUBEParser.read_cube(topondfile)
                 _, base = super().get_topond_geometry()
+                struc = super().get_geometry()
+                base = units.au_to_angstrom(base) # Commensurate with structure.
+
             # class instantiation
-            if type == 'SURFRHOO' or type == 'unknown':
+            if type == 'RHOO' or type == 'unknown':
             # map from base method has spin dimension
-                obj = ChargeDensity(map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFSPDE':
-                obj = SpinDensity(map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFLAPP':
-                obj = Laplacian(map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFLAPM':
-                obj = Laplacian(-map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFGRHO':
-                obj = Gradient(map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFKKIN':
-                obj = HamiltonianKE(map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFGKIN':
-                obj = LagrangianKE(map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFVIRI':
-                obj = VirialField(map[:,:,0], base, 2, struc, unit)
-            elif type == 'SURFELFB':
-                obj = ELF(map[:,:,0], base, 2, struc, unit)
+                obj = ChargeDensity(map, base, struc, unit)
+            elif type == 'SPDE':
+                obj = SpinDensity(map, base, struc, unit)
+            elif type == 'LAPP':
+                obj = Laplacian(map, base, struc, unit)
+            elif type == 'LAPM':
+                obj = Laplacian(-map, base, struc, unit)
+            elif type == 'GRHO':
+                obj = Gradient(map, base, struc, unit)
+            elif type == 'KKIN':
+                obj = HamiltonianKE(map, base, struc, unit)
+            elif type == 'GKIN':
+                obj = LagrangianKE(map, base, struc, unit)
+            elif type == 'VIRI':
+                obj = VirialField(map, base, struc, unit)
+            elif type == 'ELFB':
+                obj = ELF(map, base, struc)
             obj._set_unit('Angstrom')
 
-        elif istraj == True:
+        elif category == 'traj':
             if not hasattr(self, 'file_name'):
                 raise Exception("Properties output file is mandatory for 'TRAJ' files.")
             wtraj, traj, unit = TOPONDParser.traj(topondfile)
             struc = super().get_geometry()
-            # no atom plot currently, though read method is given
+            # no 2D atom plot currently, though read method is given
             _, base = super().get_topond_geometry()
+            base = units.au_to_angstrom(base) # Commensurate with structure.
             # class instantiation
             if type == 'TRAJGRAD' or type == 'unknown':
                 obj = GradientTraj(wtraj, traj, base, struc, unit)
@@ -2967,9 +2991,7 @@ class Properties_output(POutBASE):
         """
         from CRYSTALpytools.base.extfmt import CrgraParser
         from CRYSTALpytools.electronics import ChargeDensity
-        import numpy as np
         import pandas as pd
-        import warnings
 
         method = method.lower()
         if method == 'substract': method = 'subtract'# an old typo
@@ -2979,8 +3001,8 @@ class Properties_output(POutBASE):
         pato = [] # used for method check
         if not hasattr(self, 'file_name'):
             if np.all(index==None):
-                warnings.warn('Properties output file not found: Only the first 1 (2) density map(s) will be read for spin=1(2).',
-                              stacklevel=2)
+                warn('Properties output file not found: Only the first 1 (2) density map(s) will be read for spin=1(2).',
+                     stacklevel=2)
                 index = None
             else:
                 index = np.array(index, dtype=int, ndmin=1)
@@ -3017,11 +3039,11 @@ class Properties_output(POutBASE):
                                           np.where(headers>chg[1-use_idx])[0][0]], dtype=int)
                         index = np.sort(index)
                 else:
-                    warnings.warn('Multiple charge densities exist in the calculation. Only the first density map will be read.',
-                                  stacklevel=2)
+                    warn('Multiple charge densities exist in the calculation. Only the first density map will be read.',
+                         stacklevel=2)
                     index = 0
 
-        # read file 0
+        # read file 0, abc are in angstrom, consistent with struc
         spin, a, b, c, cosxy, struc, map, unit = CrgraParser.mapn(f25_files[0], index)
         # methods
         if len(f25_files) == 1 and len(pato) == 1 and method == 'subtract': # PATO in the same file
@@ -3029,7 +3051,6 @@ class Properties_output(POutBASE):
             obj = ChargeDensity(map[1-use_idx], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
             self.echg = self.echg.subtract(obj)
             self.echg._set_unit('Angstrom')
-            self.echg.data = self.echg.data[::-1] # base vector use BA rather than AB
         else: # others
             if spin == 1:
                 self.echg = ChargeDensity(map, np.vstack([a,b,c]), 1, 2, struc, unit)
@@ -3038,20 +3059,19 @@ class Properties_output(POutBASE):
                     raise Exception('Broken file: charge / spin density missing for spin polarized systems.')
                 self.echg = ChargeDensity(np.dstack([map[0], map[1]]), np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
             self.echg._set_unit('Angstrom')
-            self.echg.data = self.echg.data[::-1] # base vector use BA rather than AB
             if method == 'alpha_beta':
                 if len(f25_files) > 1:
-                    warnings.warn("The 'alpha_beta' method is used only for a single entry. Nothing is done to other entries.",
-                                  stacklevel=2)
+                    warn("The 'alpha_beta' method is used only for a single entry. Nothing is done to other entries.",
+                         stacklevel=2)
                 elif spin != 2:
-                    warnings.warn("Not a spin-polarized system, do nothing", stacklevel=2)
+                    warn("Not a spin-polarized system, do nothing", stacklevel=2)
                 else:
                     self.echg.alpha_beta()
             elif method == 'subtract':
                 if len(f25_files) > 1:
                     self.echg = self.echg.subtract(*[f for f in f25_files[1:]])
                 else:
-                    warnings.warn("Nothing to subtract.", stacklevel=2)
+                    warn("Nothing to subtract.", stacklevel=2)
 
         return self.echg
 
@@ -3084,9 +3104,7 @@ class Properties_output(POutBASE):
         """
         from CRYSTALpytools.base.extfmt import CUBEParser
         from CRYSTALpytools.electronics import ChargeDensity
-        import numpy as np
         import pandas as pd
-        import warnings
 
         method = method.lower()
         if method == 'substract': method = 'subtract'# an old typo
@@ -3112,8 +3130,8 @@ class Properties_output(POutBASE):
         if hasattr(self, 'file_name'):
             struc1 = super().get_geometry()
             if compare_struc(struc, struc1) == False:
-                warnings.warn('Inconsistent geometries are given in output and CUBE files, using the one from output.',
-                              stacklevel=2)
+                warn('Inconsistent geometries are given in output and CUBE files, using the one from output.',
+                     stacklevel=2)
             struc = struc1
 
         # Other entries
@@ -3133,7 +3151,8 @@ class Properties_output(POutBASE):
 
         if method == 'subtract':
             self.ech3 = ChargeDensity(np.expand_dims(data, axis=3),
-                                      [origin, a, b, c], 1, 3, struc=struc, unit='a.u.')
+                                      units.au_to_angstrom(np.vstack([origin, a, b, c])),
+                                      1, 3, struc=struc, unit='a.u.')
             del data, data1
         else:
             spin = len(cubefiles)
@@ -3141,8 +3160,9 @@ class Properties_output(POutBASE):
             datanew[:, :, :, 0] = data; del data
             if spin > 1:
                 datanew[:, :, :, 1] = data1; del data1
-            self.ech3 = ChargeDensity(datanew, [origin, a, b, c], spin, 3,
-                                      struc=struc, unit='a.u.')
+            self.ech3 = ChargeDensity(datanew,
+                                      units.au_to_angstrom(np.vstack([origin, a, b, c])),
+                                      spin, 3, struc=struc, unit='a.u.')
             del datanew
 
         if method == 'alpha_beta':
@@ -3245,27 +3265,25 @@ class Properties_output(POutBASE):
         spin, a, b, c, cosxy, struc, map, unit = CrgraParser.mapn(f25_file, index)
 
         if type == 'DENSITY':
-            obj = ChargeDensity(map, np.vstack([a,b,c]), 1, 2, struc, unit)
-            obj.data = obj.data[::-1] # base vector use BA rather than AB
+            obj = ChargeDensity(map, units.au_to_angstrom(np.vstack([a,b,c])),
+                                1, 2, struc, unit)
             obj._set_unit('Angstrom')
         elif type == 'MAGNETIZ':
             obj = Magnetization(np.dstack([map[0], map[1], map[2]]),
-                                np.vstack([a[0],b[0],c[0]]), 2, struc, unit)
-            obj.data = obj.data[::-1] # base vector use BA rather than AB
+                                units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                2, struc, unit)
             obj._set_unit('SI')
         elif type == 'ORBCURDENS':
             obj = OrbitalCurrentDensity(np.dstack([map[0], map[1], map[2]]),
-                                        np.vstack([a[0],b[0],c[0]]), 2, struc, unit)
-            obj.data = obj.data[::-1] # base vector use BA rather than AB
+                                        units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                        2, struc, unit)
             obj._set_unit('SI')
         elif type == 'SPICURDENS':
             obj = SpinCurrentDensity(np.dstack([map[0], map[1], map[2]]),
                                      np.dstack([map[3], map[4], map[5]]),
                                      np.dstack([map[6], map[7], map[8]]),
-                                     np.vstack([a[0],b[0],c[0]]), 2, struc, unit)
-            obj.data_x = obj.data_x[::-1] # base vector use BA rather than AB
-            obj.data_y = obj.data_y[::-1] # base vector use BA rather than AB
-            obj.data_z = obj.data_z[::-1] # base vector use BA rather than AB
+                                     units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
+                                     2, struc, unit)
             obj._set_unit('SI')
 
         setattr(self, type, obj)

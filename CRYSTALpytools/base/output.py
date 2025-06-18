@@ -403,71 +403,62 @@ class POutBASE():
 
     def get_topond_geometry(self):
         """
-        Get the cluster geometry and plot plane base (2D only) from TOPOND
-        calculation output.
+        Get the cluster geometry and plot plane base from TOPOND calculation output.
+        All length units are in Bohr.
 
         Returns:
-            atomsplt (array): Atomic numbers and coordinates in plotting frame.
-            base (array): *Valid for 2D plots only* 3\*3 range of orthogonal
-                plotting base x and y. A: (xmin, ymax), B: (xmin, ymin), C:
-                (xmax, ymin). Unit: Bohr.
+            atomsplt (array): Atomic numbers and coordinates in plotting frame. (2D only)
+            base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
+                base vectors BC, BA (2D) or OA, OB, OC (3D). The sequence is (O),
+                A, B, C.
         """
-        import re
         import numpy as np
         from CRYSTALpytools.units import angstrom_to_au
         from scipy.spatial.transform import Rotation
 
-        data = self.data
-        countline = 0
-        istopond = False; atomsplt = []; rotmx = []; xyrange = [];
-        while countline < len(data):
-            line = data[countline]
-            if re.match(r'^\s*\*\s+T O P O N D', line):
-                istopond = True
-                countline += 1
-            elif re.match(r'^\s*\*\*\* ATOMS \(POINTS\)\: AT\. N\. AND TRASFORMED COORD\.\(AU\)',
-                          line):
-                countline += 2
-                line = data[countline]
-                while line.strip() != '':
-                    atomsplt.append(line.strip().split())
-                    countline += 1
-                    line = data[countline]
-            elif re.match(r'^\s*ROTAT\. MATRIX', line):
-                for i in range(3):
-                    line = data[countline+i]
-                    rotmx.append(line[37:].strip().split()[0:3])
-                countline += 3
-            elif re.match(r'^\s*ORIGIN AT \( AU\; SYSTEM REF\. FRAME\)', line):
-                origin = line[37:].strip().split()[0:3]
-                origin = np.array(origin, dtype=float)
-                countline += 1
-            elif re.match(r'^\s*X AXIS RANGES AND INCREMENTS', line):
-                xyrange.append(line[37:].strip().split()[0:3])
-                countline += 1
-                line = data[countline]
-                xyrange.append(line[37:].strip().split()[0:3])
-                xyrange = np.array(xyrange, dtype=float)
-                if '(ANG)' in line:
-                    xyrange = angstrom_to_au(xyrange)
-                break
-            else:
-                countline += 1
+        df = self.df
+        title = df[df[0].str.contains(r'^\s*\*\s+T O P O N D')].index.tolist()
+        if len(title) == 0: raise Exception("TOPOND output not found. Is it a TOPOND output file?")
 
-        if istopond == False:
-            raise Exception("TOPOND output not found. Is it a TOPOND output file?")
+        line2D = df[df[0].str.contains(r'^\s*\*\*\* ATOMS \(POINTS\)\: AT\. N\. AND TRASFORMED COORD\.\(AU\)')].index.tolist()
+        lineplt = df[df[0].str.contains(r'^\s*\*\*\* PLOT INFORMATION \*\*\*')].index.tolist()
+        if len(lineplt) == 0: raise Exception("TOPOND plot information not found.")
+        if len(line2D) == 0: # 3D topond
+            linexyz = df[df[0].str.contains(r'^\s*[XYZ] AXIS RANGES AND INCREMENTS')].index.tolist()
+            xyzrange = df[0].loc[linexyz].map(lambda x: x[37:].strip().split()[0:3]).tolist()
+            xyzrange = np.array(xyzrange, dtype=float)
+            if '(ANG)' in df[0].loc[linexyz[0]]:
+                xyzrange = angstrom_to_au(xyzrange)
+            base = np.vstack([xyzrange[:, 0],
+                              [xyzrange[0, 1]-xyzrange[0, 0], 0., 0.],
+                              [0., xyzrange[1, 1]-xyzrange[1, 0], 0.],
+                              [0., 0., xyzrange[2, 1]-xyzrange[2, 0]]])
+            base[1:] += base[0]
+            atomsplt = []
+        else: # 2D topond
+            linerot = df[df[0].str.contains(r'^\s*ROTAT\. MATRIX')].index.tolist()
+            lineorg = df[df[0].str.contains(r'^\s*ORIGIN AT \( AU\; SYSTEM REF\. FRAME\)')].index.tolist()
+            linexy = df[df[0].str.contains(r'^\s*[XY] AXIS RANGES AND INCREMENTS')].index.tolist()
 
-        atomsplt = np.array(atomsplt, dtype=float)
-        # define rotation
-        rotmx = np.array(rotmx, dtype=float)
-        rot = Rotation.from_matrix(rotmx)
-        originplt = rot.apply(origin)
-        # force origin to 0
-        baseplt = np.vstack([originplt, originplt, originplt])
-        baseplt[0, 0:2] += [xyrange[0, 0], xyrange[1, 1]]
-        baseplt[1, 0:2] += [xyrange[0, 0], xyrange[1, 0]]
-        baseplt[2, 0:2] += [xyrange[0, 1], xyrange[1, 0]]
-        base = rot.inv().apply(baseplt)
+            atomsplt = df[0].loc[line2D[0]+2:lineplt[0]-2].map(lambda x: x.strip().split()).tolist()
+            atomsplt = np.array(atomsplt, dtype=float)
+            rotmx = df[0].loc[linerot[0]:linerot[0]+2].map(lambda x: x[37:].strip().split()[0:3]).tolist()
+            rotmx = np.array(rotmx, dtype=float)
+            origin = np.array(df[0].loc[lineorg[0]][37:].strip().split()[0:3], dtype=float)
+            xyrange = df[0].loc[linexy].map(lambda x: x[37:].strip().split()[0:3]).tolist()
+            xyrange = np.array(xyrange, dtype=float)
+            if '(ANG)' in df[0].loc[linexy[0]]:
+                xyrange = angstrom_to_au(xyrange)
+            # define rotation
+            rot = Rotation.from_matrix(rotmx)
+            originplt = rot.apply(origin)
+            # force origin to 0
+            baseplt = np.zeros([3, 3])
+            baseplt = np.vstack([originplt, originplt, originplt])
+            baseplt[0, 0:2] += [xyrange[0, 0], xyrange[1, 1]]#Y
+            baseplt[1, 0:2] += [xyrange[0, 0], xyrange[1, 0]]#O
+            baseplt[2, 0:2] += [xyrange[0, 1], xyrange[1, 0]]#X
+            base = rot.inv().apply(baseplt)
 
         return atomsplt, base
 

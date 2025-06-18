@@ -1173,7 +1173,7 @@ class ChargeDensity():
     Args:
         data (array): Plot data. nY\*nX\*nSpin (2D) or nZ\*nY\*nX\*nSpin (3D)
         base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
-            base vectors BA, BC (2D) or OA, OB, OC (3D). The sequence is (O),
+            base vectors BC, BA (2D) or OA, OB, OC (3D). The sequence is (O),
             A, B, C.
         spin (int): 1 or 2.
         dimen (int): Dimensionality of the plot.
@@ -1327,8 +1327,6 @@ class ChargeDensity():
                 y_ticks=5,
                 title='default',
                 figsize=[6.4, 4.8],
-                fig=None,
-                ax_index=None,
                 **kwargs):
         """
         Plot 2D charge/spin density map. A wrapper of ``plot.plot_dens_ECHG``
@@ -1354,7 +1352,7 @@ class ChargeDensity():
 
         Args:
             unit (str): Plot unit. 'Angstrom' for :math:`\\AA^{-3}`, 'a.u.' for
-                Bohr:math:`^{-3}`.
+                Bohr:math:`^{-3}`. X and y axis scales are changed correspondingly.
             option (str): Available options see above.
             levels (int|array): Set levels of contour plot. A number for
                 linear scaled plot colors or an array for user-defined levels,
@@ -1390,10 +1388,9 @@ class ChargeDensity():
                 'default' for default values and 'None' for no title.
             figsize (list): Matplotlib figure size. Note that axes aspects are
                 fixed to be equal.
-            fig (Figure): *Developer Only*, matplotlib Figure class.
-            ax_index (list[int]): *Developer Only*, indices of axes in ``fig.axes``.
             \*\*kwargs: Other arguments passed to ``axes.contour()`` function
-                to set contour lines.
+                to set contour lines, and *developer only* arguments, ``fig``
+                and ``ax_index``, to pass figure object and axis index.
 
         Returns:
             fig (Figure): Matplotlib figure object
@@ -1484,11 +1481,17 @@ class ChargeDensity():
             option = 'charge'
 
         ## get the correct axes
-        if np.all(fig!=None):
-            if np.all(ax_index==None):
+        if 'fig' in kwargs.keys():
+            if 'ax_index' not in kwargs.keys():
+                self._set_unit(uold)
                 raise ValueError("Indices of axes must be set when 'fig' is not None.")
-            ax_index = np.array(ax_index, dtype=int, ndmin=1)
+
+            ax_index = np.array(kwargs['ax_index'], dtype=int, ndmin=1)
+            fig = kwargs['fig']
+            del kwargs['fig'], kwargs['ax_index']
+
             if option.lower() == 'both' and len(ax_index) != 2:
+                self._set_unit(uold)
                 raise ValueError("2 axes needed when option='both'.")
         else:
             if option.lower() == 'both':
@@ -1502,31 +1505,37 @@ class ChargeDensity():
 
         ax = [fig.axes[i] for i in ax_index]
         ## plot maps
-        if option.lower() == 'both':
-            fig = plot_2Dscalar(
-                fig, ax[0], self.data[:, :, 0], self.base, levels1, chgline,
-                isovalues, colormap, cbar_label1, a_range, b_range, rectangle,
-                edgeplot, x_ticks, y_ticks, **kwargs
-            )
-            fig = plot_2Dscalar(
-                fig, ax[1], self.data[:, :, 1], self.base, levels2, spinline,
-                isovalues, colormap, cbar_label2, a_range, b_range, rectangle,
-                edgeplot, x_ticks, y_ticks, **kwargs
-            )
-        elif option.lower() == 'charge':
-            fig = plot_2Dscalar(
-                fig, ax[0], self.data[:, :, 0], self.base, levels1, chgline,
-                isovalues, colormap, cbar_label1, a_range, b_range, rectangle,
-                edgeplot, x_ticks, y_ticks,  **kwargs
-            )
-        elif option.lower() == 'spin':
-            fig = plot_2Dscalar(
-                fig, ax[0], self.data[:, :, 1], self.base, levels2, spinline,
-                isovalues, colormap, cbar_label2, a_range, b_range, rectangle,
-                edgeplot, x_ticks, y_ticks,  **kwargs
-            )
-        else:
-            raise ValueError("Unknown option: '{}'.".format(option))
+        if unit.lower() == 'angstrom': pltbase = self.base
+        else: pltbase = units.angstrom_to_au(self.base)
+        try:
+            if option.lower() == 'both':
+                fig = plot_2Dscalar(
+                    fig, ax[0], self.data[:, :, 0], pltbase, levels1, chgline,
+                    isovalues, colormap, cbar_label1, a_range, b_range, rectangle,
+                    edgeplot, x_ticks, y_ticks, **kwargs
+                )
+                fig = plot_2Dscalar(
+                    fig, ax[1], self.data[:, :, 1], pltbase, levels2, spinline,
+                    isovalues, colormap, cbar_label2, a_range, b_range, rectangle,
+                    edgeplot, x_ticks, y_ticks, **kwargs
+                )
+            elif option.lower() == 'charge':
+                fig = plot_2Dscalar(
+                    fig, ax[0], self.data[:, :, 0], pltbase, levels1, chgline,
+                    isovalues, colormap, cbar_label1, a_range, b_range, rectangle,
+                    edgeplot, x_ticks, y_ticks,  **kwargs
+                )
+            elif option.lower() == 'spin':
+                fig = plot_2Dscalar(
+                    fig, ax[0], self.data[:, :, 1], pltbase, levels2, spinline,
+                    isovalues, colormap, cbar_label2, a_range, b_range, rectangle,
+                    edgeplot, x_ticks, y_ticks,  **kwargs
+                )
+            else:
+                raise Exception("Unknown option: '{}'.".format(option))
+        except Exception as e:
+            self._set_unit(uold)
+            raise e
 
         # title and labels
         for a in ax:
@@ -1631,106 +1640,51 @@ class ChargeDensity():
         Returns:
             fig: MayaVi scence object, if ``show_the_scene=False``.
         """
-        from CRYSTALpytools.base.plotbase import plot_3Dscalar, plot_3Dplane
+        from CRYSTALpytools.base.plotbase import plot_GeomScalar
         try:
             from mayavi import mlab
         except ModuleNotFoundError:
             raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
 
-        # Input processing and sanity check
-        if self.dimension != 2 and self.dimension != 3:
-            raise Exception('Not a 3D/2D charge density object.')
-
+        # Unit
         uold = self.unit
-        if self.unit.lower() != unit.lower(): self._set_unit(unit)
+        if self.unit.lower() != unit.lower():
+            self._set_unit(unit)
 
-        if np.all(self.structure==None):
-            raise Exception("Geometry structure not available.")
+        # structure
+        if self.structure == None:
+            self._set_unit(uold)
+            raise Exception("Structure information is required for 3D plots.")
 
         option = option.lower()
         if option == 'charge': ispin = 0
         elif option == 'spin': ispin = 1
-        else: raise ValueError("Unknown option: '{}'.".format(option))
+        else: self._set_unit(uold); raise ValueError("Unknown option: '{}'.".format(option))
 
-        if np.all(isovalue==None):
-            isovalue = (np.max(self.data) - np.min(self.data)) * 0.5 + np.min(self.data)
-
-        interp = interp.lower()
-        if interp not in ['no interp', 'linear', 'nearest', 'slinear', 'cubic']:
-            raise ValueError("Unknown interpolation method : '{}'.".format(interp))
-        if volume_3d == True:
-            interp = 'no interp' # not using GridInterpolate.
-
-
-        # Expansion, check periodicity
-        grid_display_range = np.array(grid_display_range, dtype=float)
-        if self.dimension == 2 and len(grid_display_range) > 2:
-            if grid_display_range[2, 0] != 0 or grid_display_range[2, 1] != 1:
-                warn("For 2D data grid, a 2x2 display range should be defined.",
-                     stacklevel=2)
-            grid_display_range = grid_display_range[0:2]
-        if len(grid_display_range) != self.dimension:
-            raise Exception("Grid display range must have the same dimensionality as grid data.")
-
-        if 'display_range' in kwargs.keys():
-            display_range = np.array(kwargs['display_range'], dtype=float)
-        else:
-            display_range = np.array([[0,1], [0,1], [0,1]], dtype=float)
-
-        if np.any(self.structure.pbc==False):
-            idir = np.where(self.structure.pbc==False)[0]
-            display_range[idir] = [0., 1.]
-
-        idx = np.where(display_range[:,1]-display_range[:,0]<1e-4)[0]
-        if len(idx) > 0:
-            direct = ['x', 'y', 'z'][idx[0]]
-            raise Exception("Structure display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
-                direct, direct, display_range[idx[0], 0], direct, display_range[idx[0], 1]))
-        idx = np.where(grid_display_range[:,1]-grid_display_range[:,0]<1e-4)[0]
-        if len(idx) > 0:
-            direct = ['x', 'y', 'z'][idx[0]]
-            raise Exception("Grid display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
-                direct, direct, grid_display_range[idx[0], 0], direct, grid_display_range[idx[0], 1]))
-
-        # Plot structure
-        keys = ['atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
-                'cell_color', 'cell_linewidth', 'scale', 'special_bonds']
-        keywords = dict(show_the_scene=False, display_range=display_range)
+        # Plot figure
+        inputs = dict(struc=self.structure,
+                      base=self.base,
+                      data=self.data[..., ispin],
+                      isovalue=isovalue,
+                      volume_3d=volume_3d,
+                      contour_2d=contour_2d,
+                      interp=interp,
+                      interp_size=interp_size,
+                      grid_display_range=grid_display_range)
+        keys = ['colormap', 'opacity', 'transparent', 'color', 'line_width',
+                'vmax', 'vmin', 'title', 'orientation', 'nb_labels', 'label_fmt'
+                'atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
+                'cell_color', 'cell_linewidth', 'display_range', 'bond_scale', 'scale', # scale is for compatibility
+                'special_bonds']
         for k, v in zip(kwargs.keys(), kwargs.values()):
-            if k in keys: keywords[k] = v
+            if k in keys: inputs[k] = v
 
-        fig = self.structure.visualize(**keywords)
-
-        # Plot data
-        keys = ['colormap', 'opacity', 'transparent', 'line_width', 'color',
-                'vmax', 'vmin', 'title', 'orientation', 'nb_labels', 'label_fmt']
-        if self.dimension == 3: # 3D isosurfaces
-            keywords = dict(fig=fig,
-                            base=self.base,
-                            data=self.data[:, :, :, ispin],
-                            isovalue=isovalue,
-                            volume_3d=volume_3d,
-                            interp=interp,
-                            interp_size=interp_size,
-                            display_range=grid_display_range)
-            for k, v in zip(kwargs.keys(), kwargs.values()):
-                if k in keys: keywords[k] = v
-
-            fig = plot_3Dscalar(**keywords)
-        else: # 2D contour plots
-            keywords = dict(fig=fig,
-                            base=self.base,
-                            data=self.data[:, :, ispin],
-                            levels=isovalue,
-                            contour_2d=contour_2d,
-                            interp=interp,
-                            interp_size=interp_size,
-                            display_range=grid_display_range)
-            for k, v in zip(kwargs.keys(), kwargs.values()):
-                if k in keys: keywords[k] = v
-
-            fig = plot_3Dplane(**keywords)
+        try:
+            fig = plot_GeomScalar(**inputs)
+        except Exception as e:
+            self._set_unit(uold)
+            raise e
 
         # Final setups
         keys = ['azimuth', 'elevation', 'distance', 'focalpoint', 'roll']
@@ -1738,11 +1692,11 @@ class ChargeDensity():
         for k, v in zip(kwargs.keys(), kwargs.values()):
             if k in keys: keywords[k] = v
         mlab.view(**keywords)
+        mlab.gcf().scene.parallel_projection = True
 
         if show_the_scene == False:
             return fig
         else:
-            mlab.gcf().scene.parallel_projection = True
             mlab.show()
             return
 
@@ -1826,7 +1780,7 @@ class ChargeDensity():
         else:
             raise ValueError('Unknown unit.')
 
-        lprops = [] # length units
+        lprops = [] # length units. Note: Base should be commensurate with structure and not updated here.
         dprops = ['data'] # density units
         for l in lprops:
             newattr = getattr(self, l) * cst

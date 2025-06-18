@@ -684,7 +684,8 @@ class Quasi_harmonic:
         Parameterized and tested algorithms for ``min_method``:
 
         * BFGS(no boundary)  
-        * L-BFGS-B(with boundary)
+        * L-BFGS-B(with boundary)  
+        * SLSQP (with boundary)
 
         Isothermal bulk modulus :math:`K_{T}` is obtained by a secondary fit of
         $F(V; T)$ with the same ``eos_method``.
@@ -715,9 +716,9 @@ class Quasi_harmonic:
                 with `PyMatGen eos module <https://pymatgen.org/pymatgen.analysis.html#module-pymatgen.analysis.eos>`_.
             poly_order (array[int]): The order of polynomials used to fit
                 frequency as the function of volumes.
-            min_method (string): Minimisation algorithms, 'BFGS'/'L-BFGS-B'.
+            min_method (string): Minimisation algorithms, 'BFGS'/'L-BFGS-B'/'SLSQP'.
                 See above.
-            volume_bound (tuple-like), Boundary conditions of equilibrium
+            volume_bound (list), 1\*2 boundary conditions of equilibrium
                 volumes. Unit: :math:`\\AA^{3}`
             mutewarning (bool): Whether print out warning messages.
             \*\*kwargs: See below
@@ -754,6 +755,11 @@ class Quasi_harmonic:
 
         if self.method != 'thermo_freq': refit = True
         else: refit = False
+
+        if min_method not in ['BFGS', 'L-BFGS-B', 'SLSQP']:
+            raise Exception("Unknown minimization methd: '{}'. Allowed inputs: 'BFGS', 'L-BFGS-B', 'SLSQP'.")
+        if eos_method not in ['murnaghan', 'birch', 'birch_murnaghan', 'pourier_tarantola', 'vinet', 'deltafactor', 'numerical_eos']:
+            raise Exception("Unknown EOS methd: '{}'. Allowed inputs: 'murnaghan', 'birch', 'birch_murnaghan', 'pourier_tarantola', 'vinet', 'deltafactor', 'numerical_eos'.")
 
         # Temperature and pressure
         if 'temperature' in kwargs:
@@ -798,7 +804,7 @@ class Quasi_harmonic:
             refit = True
 
         # Other args
-        if np.all(volume_bound!=None) or 'order' in kwargs.keys() \
+        if volume_bound is not None or 'order' in kwargs.keys() \
         or 'min_ndata_factor' in kwargs.keys() or 'max_poly_order_factor' in kwargs.keys() \
         or 'min_poly_order' in kwargs.keys(): refit = True
 
@@ -808,7 +814,7 @@ class Quasi_harmonic:
 
         # Fit DFT total energy. Fitted values will not be covered.
         if self.method == 'thermo_freq' and hasattr(self, 'eos'):
-            pass
+            eosinp = {}; pass
         else:
             eosinp = {}; eos_method = eos_method.lower()
             for i in ['min_ndata_factor', 'max_poly_order_factor', 'min_poly_order_factor ']:
@@ -818,7 +824,7 @@ class Quasi_harmonic:
 
         # Fit frequencies, Fitted values will not be covered.
         if self.method == 'thermo_freq' and hasattr(self, 'fit_order'):
-            r2tot = [['unknown' for i in range(qha.nmode)] for j in range(qha.nqpoint)]
+            r2tot = [['unknown' for i in range(self.nmode)] for j in range(self.nqpoint)]
             r2avg='Not available for restarted calculations.'
         else:
             r2tot, r2avg = self.freq_polynomial_fit(order=poly_order)
@@ -832,11 +838,11 @@ class Quasi_harmonic:
         methods = {
             'BFGS': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, zp, wt, kBt), method='BFGS', jac='3-point')",
             'L-BFGS-B': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, zp, wt, kBt), method='L-BFGS-B', jac='3-point', bounds=volume_bound)",
+            'SLSQP': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, zp, wt, kBt), method='SLSQP', jac='3-point', bounds=volume_bound)",
         }
 
         # Expression of Gibbs free energy
         def gibbs_opt(volume, t, p, obj, zp, wt, kBt):
-            volume = volume[0]
             dv = volume - obj.combined_volume[0]
 
             mTS = 0.
@@ -849,12 +855,15 @@ class Quasi_harmonic:
 
         # Gibbs(V; T, p) minimization nPress*nTempt list
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
-        v_init = np.mean(self.combined_volume)
+        v_init = self.combined_volume.mean()
 
         zp = 0. # analytical expression of U
         wt = self.qpoint[:, 3] / np.sum(self.qpoint[:, 3])
         for iq in range(self.nqpoint):
             zp += wt[iq] * 0.5 * molh * np.sum([self.freq_fit[iq][im] for im in range(self.nmode)])
+
+        if volume_bound is not None:
+            volume_bound = np.array(volume_bound, ndmin=2).tolist()[0]
 
         for idx_p, p in enumerate(self.pressure):
             for idx_t, t in enumerate(self.temperature):
@@ -867,7 +876,7 @@ class Quasi_harmonic:
                           'zp' : zp,
                           'wt' : wt,
                           'kBt' : t*molk*1e-3,
-                          'volume_bound': volume_bound}
+                          'volume_bound': [volume_bound]}
                 exec(methods[min_method], params)
                 self.volume[idx_p, idx_t] = params['vol'].x[0]
 
@@ -963,7 +972,7 @@ class Quasi_harmonic:
 
             \\gamma_{\\textbf{q}i}=-\\frac{\\ln{\\omega}-\\ln{\\omega_{0}}}{\\ln{V}-\\ln{V_{0}}}
 
-        :math:`V_{0}` is the most compact structure sampled. Frequency at given
+        :math:`V_{0}` is the energy minimum structure sampled. Frequency at given
         volume can be expressed analytically by:
 
         .. math::
@@ -992,7 +1001,7 @@ class Quasi_harmonic:
             eos_method (str): EOS used to fit DFT total energy and Helmholtz
                 free energy (to get bulk modules). Valid entries are consistent
                 with `PyMatGen eos module <https://pymatgen.org/pymatgen.analysis.html#module-pymatgen.analysis.eos>`_.
-            min_method (string): Minimisation algorithms, 'BFGS'/'L-BFGS-B'.
+            min_method (string): Minimisation algorithms, 'BFGS'/'L-BFGS-B'/'SLSQP'.
                 See ``thermo_freq()``.
             volume_bound (tuple-like), Boundary conditions of equilibrium
                 volumes. Unit: :math:`\\AA^{3}`
@@ -1031,6 +1040,11 @@ class Quasi_harmonic:
         if self.method != 'thermo_gruneisen': refit = True
         else: refit = False
 
+        if min_method not in ['BFGS', 'L-BFGS-B', 'SLSQP']:
+            raise Exception("Unknown minimization methd: '{}'. Allowed inputs: 'BFGS', 'L-BFGS-B', 'SLSQP'.")
+        if eos_method not in ['murnaghan', 'birch', 'birch_murnaghan', 'pourier_tarantola', 'vinet', 'deltafactor', 'numerical_eos']:
+            raise Exception("Unknown EOS methd: '{}'. Allowed inputs: 'murnaghan', 'birch', 'birch_murnaghan', 'pourier_tarantola', 'vinet', 'deltafactor', 'numerical_eos'.")
+
         # Temperature and pressure
         if 'temperature' in kwargs:
             if len(self.temperature)>0 and (mutewarning == False or refit == False):
@@ -1060,7 +1074,7 @@ class Quasi_harmonic:
             refit = True
 
         # Other args
-        if np.all(volume_bound!=None) or 'order' in kwargs.keys() \
+        if volume_bound is not None or 'order' in kwargs.keys() \
         or 'min_ndata_factor' in kwargs.keys() or 'max_poly_order_factor' in kwargs.keys() \
         or 'min_poly_order' in kwargs.keys(): refit = True
 
@@ -1070,7 +1084,7 @@ class Quasi_harmonic:
 
         # Fit DFT total energy. Fitted values will not be covered.
         if self.method == 'thermo_gruneisen' and hasattr(self, 'eos'):
-            pass
+            eosinp = {}; pass
         else:
             eosinp = {}; eos_method = eos_method.lower()
             for i in ['min_ndata_factor', 'max_poly_order_factor', 'min_poly_order_factor ']:
@@ -1080,7 +1094,7 @@ class Quasi_harmonic:
 
         # Fit gruneisen parameters, Fitted values will not be covered.
         if self.method == 'thermo_gruneisen' and len(self.gru_fit)>0:
-            r2tot = [['unknown' for i in range(qha.nmode)] for j in range(qha.nqpoint)]
+            r2tot = [['unknown' for i in range(self.nmode)] for j in range(self.nqpoint)]
             r2avg='Not available for restarted calculations.'
         else:
             r2tot, r2avg = self.freq_gruneisen_fit()
@@ -1092,19 +1106,19 @@ class Quasi_harmonic:
         self.method = 'thermo_gruneisen'
         self.min_method = min_method
         methods = {
-            'BFGS': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, wt, kBt), method='BFGS', jac='3-point')",
-            'L-BFGS-B': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, wt, kBt), method='L-BFGS-B', jac='3-point', bounds=volume_bound)",
+            'BFGS': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, wt, kBt, iv0), method='BFGS', jac='3-point')",
+            'L-BFGS-B': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, wt, kBt, iv0), method='L-BFGS-B', jac='3-point', bounds=volume_bound)",
+            'SLSQP': "vol = minimize(gibbs_opt, v_init, args=(t, p, obj, wt, kBt, iv0), method='SLSQP', jac='3-point', bounds=volume_bound)",
         }
 
         # Expression of Gibbs free energy
-        def gibbs_opt(volume, t, p, obj, wt, kBt):
-            volume = volume[0]
-            v_by_v0 = volume / obj.combined_volume[0]
+        def gibbs_opt(volume, t, p, obj, wt, kBt, iv0):
+            v_by_v0 = volume / obj.combined_volume[iv0]
 
             mTS = 0.; zp = 0.
             if t > 1e-4:
                 for iq in range(obj.nqpoint):
-                    omega0 = obj.combined_freq[iq, :, 0]
+                    omega0 = obj.combined_freq[iq, :, iv0]
                     freq = np.array(omega0 * v_by_v0**-self.gru_fit[iq])
                     beta = molh*freq[np.where(freq>1e-4)[0]]*1e9 / kBt
                     mTS += wt[iq] * kBt * np.sum(np.log(1 - np.exp(-beta)))
@@ -1113,9 +1127,14 @@ class Quasi_harmonic:
 
         # Gibbs(V; T, p) minimization nPress*nTempt list
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
-        v_init = np.mean(self.combined_volume)
+        v_init = self.combined_volume.mean()
+        iv0 = np.argmin(self.combined_volume)
 
         wt = self.qpoint[:, 3] / np.sum(self.qpoint[:, 3])
+
+        if volume_bound is not None:
+            volume_bound = np.array(volume_bound, ndmin=2).tolist()[0]
+
         for idx_p, p in enumerate(self.pressure):
             for idx_t, t in enumerate(self.temperature):
                 params = {'minimize': minimize,
@@ -1126,7 +1145,8 @@ class Quasi_harmonic:
                           'obj' : self,
                           'wt' : wt,
                           'kBt' : t*molk*1e-3,
-                          'volume_bound': volume_bound}
+                          'iv0' : iv0,
+                          'volume_bound': [volume_bound]}
                 exec(methods[min_method], params)
                 self.volume[idx_p, idx_t] = params['vol'].x[0]
 
@@ -1143,13 +1163,13 @@ class Quasi_harmonic:
 
         filterwarnings("ignore", 'MORE THAN 3 IMAGINARY MODES!')
         symm = self.combined_symm[:, :, 0]
-        omega0 = self.combined_freq[:, :, 0]
+        omega0 = self.combined_freq[:, :, iv0]
         # empty eigenvector
         eigvt = np.array([[[[] for j in range(self.natom)] for k in range(self.nmode)] for l in range(self.nqpoint)])
         for idx_p, p in enumerate(self.pressure):
             for idx_t, t in enumerate(self.temperature):
                 vol = self.volume[idx_p, idx_t]
-                v_by_v0 = vol / self.combined_volume[0]
+                v_by_v0 = vol / self.combined_volume[iv0]
                 num_freq = omega0 * v_by_v0**-self.gru_fit
                 ha = Harmonic(temperature=t, pressure=p).from_frequency(
                     self.u0_fit(vol), self.qpoint, num_freq, eigvt, symm,
@@ -1209,21 +1229,18 @@ class Quasi_harmonic:
         Helmholtz free energies of sampled harmonic phonons. The explicit
         sorting and fitting of frequency-volume relationship is disabled.
 
-        The equilibrium volume is fitted by minimizing the difference between
-        analytical pressure and the given pressure at constant temperature.
+        The equilibrium volume is fitted by minimizing Gibbs free energy at the
+        given temperature and constant temperature.
 
         .. math::
 
-            V(T,p_{0})=\\text{min}\\left[
-                -\\left(
-                    \\frac{\\partial F(V)}{\\partial V}
-                \\right)_{T} - p_{0}
-            \\right]^{2}
+            V(p;T)=\\text{min}\\left[F_{EOS}(V;T) + pV\\right]
 
         Parameterized and tested algorithms for ``min_method``:
 
         * BFGS(no boundary)  
-        * L-BFGS-B(with boundary)
+        * L-BFGS-B(with boundary)  
+        * SLSQP (with boundary)
 
         Entropy is obtained by taking the derivative of Gibbs free energy at
         constant pressure.
@@ -1239,8 +1256,7 @@ class Quasi_harmonic:
 
             C_{p}=-T\\left(\\frac{\\partial^{2}G}{\\partial T^{2}}\\right)_{p}
 
-        :math:`G(T)` is fitted as polynomial specified by ``poly_order``. The
-        first order is forced to be 0 to ensure :math:`S=0` at 0 K.
+        :math:`G(T)` is fitted as polynomial specified by ``poly_order``.
 
         .. note::
 
@@ -1253,8 +1269,8 @@ class Quasi_harmonic:
                 with `PyMatGen eos module <https://pymatgen.org/pymatgen.analysis.html#module-pymatgen.analysis.eos>`_.
             poly_order (array[int]): The order of polynomials used to fit
                 Gibbs free energy as the function of volumes.
-            min_method (string, optional): Minimisation algorithms, 'BFGS'/'L-BFGS-B'.
-                See above.
+            min_method (string, optional): Minimisation algorithms, 'BFGS'/'L-BFGS-B'/'SLSQP'.
+                See ``thermo_freq()``.
             volume_bound (tuple-like), Boundary conditions of equilibrium
                 volumes. Unit: :math:`\\AA^{3}`
             mutewarning (bool): Whether print out warning messages.
@@ -1289,6 +1305,11 @@ class Quasi_harmonic:
 
         if self.method != 'thermo_eos': refit = True
         else: refit = False
+
+        if min_method not in ['BFGS', 'L-BFGS-B', 'SLSQP']:
+            raise Exception("Unknown minimization methd: '{}'. Allowed inputs: 'BFGS', 'L-BFGS-B', 'SLSQP'.")
+        if eos_method not in ['murnaghan', 'birch', 'birch_murnaghan', 'pourier_tarantola', 'vinet', 'deltafactor', 'numerical_eos']:
+            raise Exception("Unknown EOS methd: '{}'. Allowed inputs: 'murnaghan', 'birch', 'birch_murnaghan', 'pourier_tarantola', 'vinet', 'deltafactor', 'numerical_eos'.")
 
         # Temperature and pressure
         if 'temperature' in kwargs:
@@ -1333,7 +1354,7 @@ class Quasi_harmonic:
             refit = True
 
         # Other args
-        if np.all(volume_bound!=None) or 'order' in kwargs.keys() \
+        if volume_bound is not None or 'order' in kwargs.keys() \
         or 'min_ndata_factor' in kwargs.keys() or 'max_poly_order_factor' in kwargs.keys() \
         or 'min_poly_order' in kwargs.keys(): refit = True
 
@@ -1370,6 +1391,10 @@ class Quasi_harmonic:
                 self.eos_fit(self.combined_volume, helmholtz[it, :], eos_method, **eosinp)
             )
 
+        # Expression of Gibbs free energy
+        def gibbs_opt(volume, eos, p):
+            return eos(volume) + p*volume
+
         # Get thermoproperties
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
         self.helmholtz = np.zeros(self.volume.shape)
@@ -1377,17 +1402,25 @@ class Quasi_harmonic:
         self.entropy = np.zeros(self.volume.shape)
         self.c_p = np.zeros(self.volume.shape)
         self.k_t = np.zeros(self.volume.shape)
-        v = symbols('v')
-        if np.all(volume_bound==None):
-            minp = {'method':'BFGS', 'jac':'3-point'}
-        else:
-            minp = {'method':'L-BFGS-B', 'jac':'3-point', 'bounds':volume_bound}
+
+        methods = {
+            'BFGS': "fit = minimize(gibbs_opt, v, args=(eos, p), method='BFGS', jac='3-point')",
+            'L-BFGS-B': "fit = minimize(gibbs_opt, v, args=(eos, p), method='L-BFGS-B', jac='3-point', bounds=volume_bound)",
+            'SLSQP': "fit = minimize(gibbs_opt, v, args=(eos, p), method='SLSQP', jac='3-point', bounds=volume_bound)",
+        }
+        if volume_bound is not None:
+            volume_bound = np.array(volume_bound, ndmin=2).tolist()[0]
+
         for it, eos in enumerate(self.eos):
-            p_eos = -diff(eos(v), v, 1)
             for ip, p in enumerate(self.pressure):
-                p_kj = p * Avogadro / 1e24  # GPa --> kJ/mol.Angstrom^3
-                lam_p = lambdify(v, (p_eos - p_kj)**2, 'numpy')
-                fit = minimize(lam_p, eos.v0, **minp)
+                params = {'minimize'    : minimize,
+                          'gibbs_opt'   : gibbs_opt,
+                          'v'           : eos.v0,
+                          'eos'         : eos,
+                          'p'           : p*Avogadro/1e24,# GPa --> kJ/mol.Angstrom^3
+                          'volume_bound': [volume_bound]}
+                exec(methods[min_method], params)
+                fit = params['fit']
                 if fit.success == False:
                     raise Exception('EOS fitting failed at %6.2f K, %6.2f GPa. More sampling points needed.' % (self.temperature[idx_t], p))
                 if (fit.x[0] < min(self.combined_volume) or fit.x[0] > max(self.combined_volume)) and not mutewarning:
@@ -1395,8 +1428,9 @@ class Quasi_harmonic:
                          % (fit.x[0], self.temperature[it], p), stacklevel=2)
                 self.volume[ip, it] = fit.x[0]
                 self.helmholtz[ip, it] = eos(fit.x[0])
-                self.gibbs[ip, it] = eos(fit.x[0]) + p_kj * fit.x[0]
+                self.gibbs[ip, it] = fit.fun
 
+            v = symbols('v')
             second = lambdify(v, diff(eos(v), v, 2), 'numpy')
             self.k_t[:, it] = self.volume[:, it] * second(self.volume[:, it]) / molpv
 
@@ -1415,13 +1449,13 @@ class Quasi_harmonic:
                 if fix0K == True: deg = deg[1:]
                 coef, lst = polyfit(dT, dgb, deg=deg, full=True)
                 poly = Polynomial(coef)
-                allr2.append(1 - lst[0][0]/np.sum((dgb - np.mean(dgb))**2))
+                allr2.append(1 - lst[0][0]/np.sum((dgb - dgb.mean())**2))
                 allfunc.append(poly+gb[0])
             idx = np.argmax(allr2)
             self.gibbs_fit.append(allfunc[idx])
             r2tot.append(allr2[idx])
         r2tot = np.array(r2tot)
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
 
         for ip in range(self.pressure.shape[0]):
             func = self.gibbs_fit[ip]
@@ -1502,14 +1536,14 @@ class Quasi_harmonic:
                 if fix0K == True: deg = deg[1:]
                 coef, lst = polyfit(dt, dvp, deg=deg, full=True)
                 poly = Polynomial(coef)
-                r2_p.append(1 - lst[0][0]/np.sum((dvp - np.mean(dvp))**2))
+                r2_p.append(1 - lst[0][0]/np.sum((dvp - dvp.mean())**2))
                 func_p.append(poly+self.volume[ip, 0])
             idx = np.argmax(r2_p)
             func.append(func_p[idx])
             r2tot.append(r2_p[idx])
         self.vol_fit = func
         r2tot = np.array(r2tot)
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
 
         if plot == True:
             fig, ax = subplots(1, 1, figsize=(8, 6))
@@ -1712,9 +1746,9 @@ class Quasi_harmonic:
                                   [[3, 1], [4, 1], [5, 1]]], dtype=float)
 
         # Fit polynomial and lattice
-        v0 = self.combined_volume[0]**(1/3)
         vols = np.array([np.linalg.det(i) for i in lmx], dtype=float)**(1/3)
         iref = np.argsort(vols)
+        v0 = self.combined_volume[0]**(1/3)
         dv = vols[iref] - v0
 
         lfit = []; r2tot = []
@@ -1726,13 +1760,13 @@ class Quasi_harmonic:
                 deg = [i+1 for i in range(o)]
                 coef, lst = polyfit(dv, dp, deg=deg, full=True)
                 poly = Polynomial(coef)
-                allr2.append(1 - lst[0][0]/np.sum((dp - np.mean(dp))**2))
+                allr2.append(1 - lst[0][0]/np.sum((dp - dp.mean())**2))
                 allfunc.append(poly+pref[0])
             idx = np.argmax(allr2)
             lfit.append(allfunc[idx])
             r2tot.append(allr2[idx])
         r2tot = np.array(r2tot)
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
 
         self.sg = sg
         self.lattice = np.zeros([self.volume.shape[0], self.volume.shape[1], 3, 3])
@@ -1922,11 +1956,11 @@ class Quasi_harmonic:
         self.lattice = np.zeros([self.volume.shape[0], self.volume.shape[1], 3, 3])
         dG = Gibbs - self.gibbs*vscale
         for i, p in enumerate(iparam[:-1]):
-            init_x0[i+lenhess] = np.mean(lmx[:, p[0], p[1]])
+            init_x0[i+lenhess] = lmx[:, p[0], p[1]].mean()
         min_inp = dict(method='BFGS', jac='3-point', tol=0.05)
         for key in ['method', 'jac', 'hess', 'hessp', 'bounds', 'constraints', 'tol', 'options']:
             if key in kwargs.keys(): min_inp[key] = kwargs[key]
-        r2tot = []
+        r2tot = np.zeros([len(self.pressure), len(self.temperature)])
 
         for ip, p in enumerate(self.pressure):
             x0 = init_x0
@@ -1950,9 +1984,9 @@ class Quasi_harmonic:
                 self.lattice[ip, it] = L @ rot
 
                 x0 = out.x
-                r2tot.append(1 - lmx.shape[0]*out.fun**2/np.sum((dG[:, ip, it]-np.mean(dG[:, ip, it]))**2))
+                r2tot[ip,it] = 1 - lmx.shape[0]*out.fun**2/np.sum((dG[:, ip, it]-dG[:, ip, it].mean())**2)
 
-        r2avg = np.mean(r2tot)
+        r2avg = r2tot.mean()
         if self.filefmt=='yaml':
             minarg = {}
             for key in min_inp.keys():
@@ -2096,14 +2130,14 @@ class Quasi_harmonic:
                     if fix0K == True: deg = deg[1:]
                     coef, lst = polyfit(dT, dl, deg=deg, full=True)
                     poly = Polynomial(coef)
-                    r2_p.append(1 - lst[0][0]/np.sum((dl - np.mean(dl))**2))
+                    r2_p.append(1 - lst[0][0]/np.sum((dl - dl.mean())**2))
                     func_p.append(poly+L[ip, 0, i])
                 idx = np.argmax(r2_p)
                 func[ip].append(func_p[idx])
                 r2tot[ip, i] = r2_p[idx]
 
         self.latt_fit = func
-        r2avg = np.mean(r2tot, axis=0)
+        r2avg = r2tot.mean(axis=0)
 
         # Derive
         self.alpha_l = np.zeros([npress, ntempt, nparam])
@@ -2133,6 +2167,43 @@ class Quasi_harmonic:
         if self.filefmt=='yaml':
             ThermoQHA.write_expansion_latt(self, name, poly_order, r2tot, r2avg)
         return self
+
+    def get_Harmonic(self, vol):
+        """
+        Generate 'Harmonic' object by specifying the volume. Thermodynamic
+        properties must be fitted by 'thermo_freq' or 'thermo_gruneisen'.
+
+        Args:
+            vol (float): Volume in :math:`\\AA^{3}`.
+        Returns:
+            ha (Harmonic): Harmonic phonon object.
+        """
+        # sainity check
+        if self.method != 'thermo_gruneisen' and self.method != 'thermo_freq':
+            raise Exception("A 'thermo_freq()' or 'thermo_gruneisen()' fitting must be performed before calling this function.")
+        if not hasattr(self, 'u0_fit'):
+            raise Exception("The static internal energy must be fitted by equation of states.")
+
+        # Numerical frequency
+        if self.method == 'thermo_freq':
+            num_freq = np.zeros([self.nqpoint,selfa.nmode])
+            dV = vol - self.combined_volume[0]
+            for iq in range(self.nqpoint):
+                for im in range(self.nmode):
+                    num_freq[iq, im] = self.freq_fit[iq][im](dV)
+        elif self.method == 'thermo_gruneisen':
+            iv0 = np.argmin(self.combined_volume)
+            omega0 = self.combined_freq[:, :, iv0]
+            v_by_v0 = vol / self.combined_volume[iv0]
+            num_freq = omega0 * v_by_v0**-self.gru_fit
+
+        # HA
+        ha = Harmonic(autocalc=False).from_frequency(
+            self.u0_fit(vol), self.qpoint, num_freq,
+            np.array([[[[] for j in range(self.natom)] for k in range(self.nmode)] for l in range(self.nqpoint)]),
+            self.combined_symm[:, :, 0],
+            natom=self.natom, volume=vol)
+        return ha
 
 
     def eos_fit(self, volume, energy, method, **kwargs):
@@ -2179,7 +2250,7 @@ class Quasi_harmonic:
 
         # Deprecated methods
         if self.filefmt=='txt':
-            ThermoQHA.old_write_eosfit(self, self.filename, close_overlap)
+            ThermoQHA.old_write_eosfit(self, eos, method.lower())
         return eos
 
 
@@ -2192,7 +2263,7 @@ class Quasi_harmonic:
             order (list[int] | array[int]): The order of polynomials used.
         Returns:
             r2tot (array): nQpoint\*nMode array of R^2.
-            r2avg (array): Averaged R^2 at each q point.
+            r2avg (array): Averaged R^2 overall.
             self: New attributes listed below.
             fit_order (array): Same as ``order``.
             freq_fit (list): nQpoint\*nMode list of fitted polynomials.
@@ -2214,7 +2285,7 @@ class Quasi_harmonic:
                     polys = []; r2s = []
                     for o in order:
                         coef, lst = polyfit(dv, df, deg=[i+1 for i in range(o)], full=True)
-                        r2 = 1 - lst[0][0] / np.sum((df - np.mean(df))**2)
+                        r2 = 1 - lst[0][0] / np.sum((df - df.mean())**2)
                         polys.append(Polynomial(coef))
                         r2s.append(r2)
                     idx = np.argmax(r2s)
@@ -2222,14 +2293,15 @@ class Quasi_harmonic:
                     r2tot[iq, im] = r2s[idx]
             poly_fit.append(fitq)
 
-        r2avg = np.mean(r2tot, axis=1)
+        r2avg = r2tot.mean()
         # Fit info saved for restart
         self.fit_order = order
         self.freq_fit = poly_fit
+        self.method = 'thermo_freq'
 
         # Deprecated methods
         if self.filefmt=='txt':
-            Output.old_write_polyfit(self, r2tot, r2avg)
+            Output.old_write_polyfit(self, r2tot, r2tot.mean(axis=1))
         return r2tot, r2avg
 
 
@@ -2247,22 +2319,22 @@ class Quasi_harmonic:
         # Polynomial without constant
         gru_fit = np.zeros([self.nqpoint, self.nmode])
         r2tot = np.zeros([self.nqpoint, self.nmode])
-        v_by_v0 = self.combined_volume[1:] / self.combined_volume[0]
+        iv0 = np.argmin(self.combined_u0)
+        dlnV = np.log(self.combined_volume / self.combined_volume[iv0])
         for iq, freq_q in enumerate(self.combined_freq): # nQpt*nMode*nCalc
             for im, freq in enumerate(freq_q):
                 if np.sum(np.abs(freq)) < 1e-2:
                     gru_fit[iq, im] = 0.
                     r2tot[iq, im] = 1.
                 else:
-                    omega0 = self.combined_freq[iq, im, 0]
-                    omega = self.combined_freq[iq, im, 1:]
-                    gru = np.mean(-np.log(omega/omega0) / np.log(v_by_v0))
-                    gru_fit[iq, im] = gru
-                    omeganew = omega0 * v_by_v0 ** -gru
-                    r2tot[iq, im] = 1 - np.sum((omeganew - omega)**2) / np.sum((omega - np.mean(omega))**2)
+                    dlnOmega = np.log(self.combined_freq[iq, im] / self.combined_freq[iq, im, iv0])
+                    coef, lst = polyfit(dlnV, dlnOmega, deg=[1], full=True)
+                    gru_fit[iq, im] = -coef[1]
+                    r2tot[iq, im] = 1 - lst[0][0] / np.sum((dlnOmega - dlnOmega.mean())**2)
 
-        r2avg = np.mean(r2tot, axis=1)
+        r2avg = r2tot.mean()
         self.gru_fit = gru_fit
+        self.method = 'thermo_gruneisen'
         return r2tot, r2avg
 
 
@@ -2591,30 +2663,10 @@ class Quasi_harmonic:
             Gibbs[i] = ha.gibbs
 
         if interp != 0:
-            if self.method == 'thermo_freq':
-                for iv in range(interp):
-                    num_freq = np.zeros([self.nqpoint, self.nmode])
-                    vol = newvol[iv] / vscale
-                    dvol = vol - self.combined_volume[0]
-                    for iq in range(self.nqpoint):
-                        for im in range(self.nmode):
-                            num_freq[iq, im] = self.freq_fit[iq][im](dvol)
-                    ha = Harmonic(filename=None, autocalc=False).from_frequency(
-                        self.u0_fit(vol), self.qpoint, num_freq, eigvt, symm, natom=self.natom, volume=vol
-                    )
-                    ha.thermodynamics(temperature=self.temperature, pressure=self.pressure)
-                    Gibbs[self.ncalc+iv] = ha.gibbs
-            elif self.method == 'thermo_gruneisen':
-                omega0 = self.combined_freq[:, :, 0]
-                for iv in range(interp):
-                    vol = newvol[iv] / vscale
-                    v_by_v0 = vol / self.combined_volume[0]
-                    num_freq = omega0 * v_by_v0**-self.gru_fit
-                    ha = Harmonic(filename=None, autocalc=False).from_frequency(
-                        self.u0_fit(vol), self.qpoint, num_freq, eigvt, symm, natom=self.natom, volume=vol
-                    )
-                    ha.thermodynamics(temperature=self.temperature, pressure=self.pressure)
-                    Gibbs[self.ncalc+iv] = ha.gibbs
+            for iv in range(interp):
+                ha = self.get_Harmonic(newvol[iv])
+                ha.thermodynamics(temperature=self.temperature, pressure=self.pressure)
+                Gibbs[self.ncalc+iv] = ha.gibbs
         Gibbs *=  vscale
         return sg, vscale, rot, lmx, Gibbs
 
@@ -2642,7 +2694,7 @@ class Quasi_harmonic:
         """Deprecated. Call ``from_file()`` directly."""
         warn("Deprecated. Call 'from_file(source='phonopy')' instead.", stacklevel=2)
         self.from_file(*phono_yaml, source='phonopy', struc_yaml=struc_yaml,
-                       u_0=edft, scale=scale, mode_sort_tol=mode_sort_tol,
+                       u_0=edft, scale=scale, mode_sort_tol=None,
                        imaginary_tol=imaginary_tol, q_overlap_tol=q_overlap_tol,
                        q_id=q_id, q_coord=q_coord)
         return self
