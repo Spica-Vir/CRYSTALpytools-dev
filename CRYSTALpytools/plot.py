@@ -166,20 +166,22 @@ def plot_ECHG(
                            sharex=sharex, sharey=sharey, layout='tight')
 
     # plot
-    ax_index = 0
+    ax_index = 0; kwargs['fig'] = fig
     for o in obj:
         if option.lower() == 'both':
             iax = [ax_index, ax_index+1]
+            kwargs['ax_index'] = iax
             fig = o.plot_2D(unit, 'both', levels, lineplot, linewidth, isovalues,
                             colorplot, colormap, cbar_label, a_range, b_range,
                             rectangle, edgeplot, x_ticks, y_ticks, 'default',
-                            figsize, fig, iax, **kwargs)
+                            figsize, **kwargs)
             ax_index += 2
         else:
+            kwargs['ax_index'] = [ax_index]
             fig = o.plot_2D(unit, option.lower(), levels, lineplot, linewidth,
                             isovalues, colorplot, colormap, cbar_label, a_range,
                             b_range, rectangle, edgeplot, x_ticks, y_ticks,
-                            'default', figsize, fig, [ax_index], **kwargs)
+                            'default', figsize, **kwargs)
             ax_index += 1
     # title
     if np.all(title!=None):

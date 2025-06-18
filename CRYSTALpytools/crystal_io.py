@@ -3043,29 +3043,21 @@ class Properties_output(POutBASE):
                          stacklevel=2)
                     index = 0
 
-        # read file 0
+        # read file 0, abc are in angstrom, consistent with struc
         spin, a, b, c, cosxy, struc, map, unit = CrgraParser.mapn(f25_files[0], index)
         # methods
         if len(f25_files) == 1 and len(pato) == 1 and method == 'subtract': # PATO in the same file
-            self.echg = ChargeDensity(map[use_idx],
-                                      units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
-                                      spin, 2, struc[0], unit)
-            obj = ChargeDensity(map[1-use_idx],
-                                units.au_to_angstrom(np.vstack([a[1],b[1],c[1]])),
-                                spin, 2, struc[1], unit)
+            self.echg = ChargeDensity(map[use_idx], np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
+            obj = ChargeDensity(map[1-use_idx], np.vstack([a[1],b[1],c[1]]), spin, 2, struc[1], unit)
             self.echg = self.echg.subtract(obj)
             self.echg._set_unit('Angstrom')
         else: # others
             if spin == 1:
-                self.echg = ChargeDensity(map,
-                                          units.au_to_angstrom(np.vstack([a,b,c])),
-                                          1, 2, struc, unit)
+                self.echg = ChargeDensity(map, np.vstack([a,b,c]), 1, 2, struc, unit)
             else:
                 if isinstance(cosxy, float):
                     raise Exception('Broken file: charge / spin density missing for spin polarized systems.')
-                self.echg = ChargeDensity(np.dstack([map[0], map[1]]),
-                                          units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
-                                          spin, 2, struc[0], unit)
+                self.echg = ChargeDensity(np.dstack([map[0], map[1]]), np.vstack([a[0],b[0],c[0]]), spin, 2, struc[0], unit)
             self.echg._set_unit('Angstrom')
             if method == 'alpha_beta':
                 if len(f25_files) > 1:
