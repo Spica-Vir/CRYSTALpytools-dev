@@ -739,19 +739,20 @@ class CStructure(Structure):
 
     # ---------------------------- Connectivity ------------------------------#
 
-    def get_bonds(self, bond_scale=1.0, special_bonds={}, scale=None):
+    def get_bonds(self, scale=1.2, special_bonds={}):
         """
         .. _ref-CStrucGetBonds:
 
-        Get bond connectivity based on distances between atoms.
+        Get bond connectivity based on distances between atoms using Hoppe’s
+        and Jmol’s algorithms, as implemented in `Pymatgen <https://pymatgen.org/pymatgen.analysis.html#module-pymatgen.analysis.local_env>`_.
 
         Args:
-            bond_scale (float): Scale the sum of atomic radius A and radius B.
+            scale (float): *Deprecated*
             special_bonds(dict): Dictionary of bond lengths that are not
-                compliant to ``bond_scale``. Should be defined as ``{'A:B' : len}``,
-                with ``A`` ``B`` being element symbols and ``len`` being bond
-                length in :math:`\\AA`. The sequence of ``A`` ``B`` is arbitrary.
-            scale: *Deprecated* Same as ``bond_scale``.
+                compliant to the default searching scheme. Should be defined as
+                ``{'A:B' : len}``, with ``A`` ``B`` being element symbols and
+                ``len`` being bond length in :math:`\\AA`. The sequence of
+                ``A`` ``B`` is arbitrary.
         Returns:
             self (CStructure): New attributes listed below.
             self.bonds (list): nBond\*3 list. The first and second elements are
@@ -762,86 +763,94 @@ class CStructure(Structure):
                 connectivity. In `scipy.sparse.bsr_array <https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.bsr_array.html>`_
                 format.
         """
+        from operator import itemgetter
         from scipy.sparse import bsr_array
+        from pymatgen.analysis.local_env import EconNN, JmolNN
 
-        if scale != None: bond_scale=scale # compatibility
+        # Default bond connectivity
+        try:
+            bonds = EconNN().get_bonded_structure(self)
+        except Exception:
+            bonds = JmolNN().get_bonded_structure(self)
 
-        # get MAX bond lengths
-        uspec = np.unique(self.species)
-        uradius = []; usymbol = []
-        for i in uspec:
-            if i.Z == 1: uradius.append(0.4) # H too small
-            else: uradius.append(i.atomic_radius)
-            usymbol.append(i.symbol)
-
-        bondMX = {}
-        for i in range(len(uspec)):
-            symi = usymbol[i]
-            ri = uradius[i]
-            # between same atoms
-            bondMX['{}:{}'.format(symi, symi)] = ri * 2 * bond_scale
-            for j in range(i+1, len(uspec)):
-                symj = usymbol[j]
-                rj = uradius[j]
-                bondMX['{}:{}'.format(symi, symj)] = (ri + rj) * bond_scale
-                bondMX['{}:{}'.format(symj, symi)] = bondMX['{}:{}'.format(symi, symj)]
-        del uspec, uradius, usymbol
-
+        # Added bonds
         if len(special_bonds) != 0:
-            for k in special_bonds.keys():
+            if self.ndimen == 3:
+                nbr_cell = np.array([
+                    [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1],
+                    [0, 1, 1], [1, 1, 1], [-1,0, 0], [0,-1, 0], [0, 0,-1], [1,-1, 0],
+                    [-1,1, 0], [1, 0,-1], [-1,0, 1], [0, 1,-1], [0,-1, 1], [-1,1, 1],
+                    [1,-1, 1], [1, 1,-1], [-1,-1,0], [-1,0,-1], [0,-1,-1], [1,-1,-1],
+                    [-1,1,-1], [-1,-1,1], [-1,-1,-1]], dtype=int)
+            elif self.ndimen == 2 and self.pbc[2] == False:
+                nbr_cell = np.array([
+                    [0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [-1,0, 0], [0,-1, 0],
+                    [1,-1, 0], [-1,1, 0], [-1, -1, 0]], dtype=int)
+            elif self.ndimen == 2 and self.pbc[1] == False:
+                nbr_cell = np.array([
+                    [0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 1], [-1,0, 0], [0, 0,-1],
+                    [1, 0,-1], [-1,0, 1], [-1,0,-1]], dtype=int)
+            elif self.ndimen == 2 and self.pbc[0] == False:
+                nbr_cell = np.array([
+                    [0, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1], [0,-1, 0], [0, 0,-1],
+                    [0, 1,-1], [0,-1, 1], [0,-1,-1]], dtype=int)
+            elif self.ndimen == 1 and self.pbc[0] == True:
+                nbr_cell = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=int)
+            elif self.ndimen == 1 and self.pbc[1] == True:
+                nbr_cell = np.array([[0, 0, 0], [0, 1, 0], [ 0,-1, 0]], dtype=int)
+            elif self.ndimen == 1 and self.pbc[2] == True:
+                nbr_cell = np.array([[0, 0, 0], [0, 0, 1], [ 0, 0,-1]], dtype=int)
+            else:
+                nbr_cell = np.array([[0, 0, 0]], dtype=int)
+
+            nbr_cell_c = nbr_cell @ self.lattice.matrix
+            sbol = np.array([i.symbol for i in self.species])
+            crds = self.cart_coords
+            nrepeat = nbr_cell_c.shape[0]
+            nsite = self.num_sites
+            added_edges = []
+
+            for k, tol in special_bonds.items():
                 ka = k.split(':')[0].capitalize()
                 kb = k.split(':')[1].capitalize()
-                key1 = '{}:{}'.format(ka, kb)
-                if key not in bondMX.keys():
-                    warn("The specified pair '{}' does not exist in the structure. The definition is ignored.".format(k),
-                         stacklevel=2)
+
+                idxa = np.where(sbol==ka)[0]
+                idxb = np.where(sbol==kb)[0]
+                if idxa.shape[0]==0 or idxb.shape[0]==0:
+                    warn(f"The specified pair '{ka}:{kb}' does not exist in the structure. The definition is ignored.", stacklevel=2)
                     continue
 
-                bondMX[key1] = special_bonds[k]
-                if ka != kb:
-                    key2 = '{}:{}'.format(kb, ka)
-                    bondMX[key2] = special_bonds[k]
+                found_pair = False
+                for i in idxa:
+                    v1 = crds[i]
+                    for j in idxb:
+                        if i == j: continue
+                        v2 = crds[np.newaxis, j, :].repeat(nrepeat, axis=0) + nbr_cell_c
+                        dists = np.linalg.norm(v1 - v2, axis=1)
+                        for k in np.where(dists<tol)[0]: # only loop 0 or 1 times
+                            added_edges.append([i, j, nbr_cell[k]])
+                            found_pair = True
+                            break
 
+                if found_pair == False:
+                    warn(f"No bond is found within {tol:.4f} Angstrom for the specified pair '{ka}:{kb}'.", stacklevel=2)
 
-        # neighboring cells
-        self.standarize_pbc()
-        if self.ndimen == 3:
-            nbr_cell = np.array([
-                [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1],
-                [0, 1, 1], [1, 1, 1], [-1,0, 0], [0,-1, 0], [0, 0,-1], [1,-1, 0],
-                [-1,1, 0], [1, 0,-1], [-1,0, 1], [0, 1,-1], [0,-1, 1], [-1,1, 1],
-                [1,-1, 1], [1, 1,-1], [-1,-1,0], [-1,0,-1], [0,-1,-1], [1,-1,-1],
-                [-1,1,-1], [-1,-1,1], [-1,-1,-1]], dtype=int)
-        elif self.ndimen == 2:
-            nbr_cell = np.array([
-                [0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [-1,0, 0], [0,-1, 0],
-                [1,-1, 0], [-1,1, 0], [-1, -1, 0]], dtype=int)
-        elif self.ndimen == 1:
-            nbr_cell = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=int)
-        else:
-            nbr_cell = np.array([[0, 0, 0]], dtype=int)
-        nbr_cell_c = nbr_cell @ self.lattice.matrix
+            for at1, at2, cell in added_edges:
+                bonds.add_edge(from_index=at1, to_index=at2,
+                               from_jimage=(0,0,0), to_jimage=(cell[0],cell[1],cell[2]),
+                               warn_duplicates=False)
 
+        # New connectivity
+        graph = list(bonds.graph.edges(data=True))
+        graph.sort(key=itemgetter(0, 1))
         self.bonds = []
         self.bond_matrix = np.zeros([self.num_sites, self.num_sites])
-        # make the code faster
-        sbol = [i.symbol for i in self.species]
-        crds = self.cart_coords
-        nrepeat = nbr_cell.shape[0]
-        nsite = self.num_sites
-        for i in range(nsite):
-            v1 = crds[i]
-            s1 = sbol[i]
-            for j in range(i+1,nsite):
-                v2 = np.repeat([crds[j]], nrepeat, axis=0) + nbr_cell_c
-                s2 = sbol[j]
-                dists = np.linalg.norm(v1 - v2, axis=1)
-                bondTOL = bondMX['{}:{}'.format(s1, s2)]
-                for k in np.where(dists<bondTOL)[0]: # only loop 0 or 1 times
-                    self.bonds.append([i+1, j+1, nbr_cell[k]])
-                    self.bond_matrix[i, j] = 1
-                    self.bond_matrix[j, i] = 1
-                    break
+        for i, j, cell in graph:
+            cell = np.array(cell.get('to_jimage'), dtype=int)
+            self.bonds.append([i+1, j+1, cell])
+            dist = np.linalg.norm(self.cart_coords[i]-self.cart_coords[j]-cell@self.lattice.matrix)
+            self.bond_matrix[i, j] = dist
+            self.bond_matrix[j, i] = dist
 
         self.bond_matrix = bsr_array(self.bond_matrix)
         return self
@@ -1001,15 +1010,15 @@ class CStructure(Structure):
         atscale = scale_factors[atom_bond_ratio.lower()]
 
         # Bond connectivity
-        bondkwd = ['bond_scale', 'scale', 'special_bonds']; newkwd = dict() # scale is for compatibility
+        bondkwd = ['special_bonds']; newkwd = dict()
         for k, v in zip(kwargs.keys(), kwargs.values()):
             if k in bondkwd: newkwd[k] = v
 
         self.get_bonds(**newkwd)
         # Supercell
-        ndimen = self.pbc.count(True)
+        pdir = np.where(np.array(self.pbc)==True)[0]
         smx = np.eye(3, dtype=int)
-        smx[0:ndimen, 0:ndimen] = np.array(display_matrix, dtype=int, ndmin=2)[0:ndimen, 0:ndimen]
+        smx[np.ix_(pdir,pdir)] = np.array(display_matrix, dtype=int, ndmin=2)[np.ix_(pdir,pdir)]
         if np.round(abs(np.linalg.det(smx)), 12) < 1:
             raise ValueError('Determinant of input display matrix must >= 1.')
         struc = self.make_supercell(smx, in_place=False) # this will get a 3D structure
@@ -1030,6 +1039,8 @@ class CStructure(Structure):
             ]), 12)
 
         # Display range and origin
+        if len(display_range) < 3:
+            raise Exception("Insufficient definitions of display_range: A 3*2 array should be given.")
         origin = np.array(display_origin, ndmin=1, dtype=float)
         dispbg = np.round([i[0] for i in display_range], 12) + origin
         disped = np.round([i[1] for i in display_range], 12) + origin
@@ -1097,47 +1108,55 @@ class CStructure(Structure):
         del idx_neg, tmp
 
         if bd_data == False:
-            bdplt = np.hstack([ # bond idx, cart coord A, cart coord B
-                np.linspace(0, nbond-1, nbond).reshape([-1, 1]),
-                atplt[idx1, 1:],
-                atplt[idx2, 1:] + lattpt@obj.lattice.matrix,
-            ])
+            if len(lattpt) > 0:
+                bdplt = np.hstack([ # bond idx, cart coord A, cart coord B
+                    np.linspace(0, nbond-1, nbond).reshape([-1, 1]),
+                    atplt[idx1, 1:],
+                    atplt[idx2, 1:] + lattpt@obj.lattice.matrix,
+                ])
+            else:
+                warn("No bond has been identified for the current system. Check your geometry or use 'special_bonds'.", stacklevel=2)
+                bdplt = []
             del idx1, idx2, lattpt, obj
         else:
-            # Explicit matching of bonds
-            bdplt = []
-            bdold = np.array([[i[0], i[1]] for i in self.bonds], dtype=int) - 1
+            if len(lattpt) > 0:
+                # Explicit matching of bonds
+                bdplt = []
+                bdold = np.array([[i[0], i[1]] for i in self.bonds], dtype=int) - 1
 
-            bond_data = np.array(bond_data, dtype=float, ndmin=2)
-            bond_data[:,0] -= 1; bond_data[:,1] -= 1
-            dbd = np.empty([nbond,]); dbd[:] = np.nan # data to plot
+                bond_data = np.array(bond_data, dtype=float, ndmin=2)
+                bond_data[:,0] -= 1; bond_data[:,1] -= 1
+                dbd = np.empty([nbond,]); dbd[:] = np.nan # data to plot
 
-            saved_bonds = []
-            for i in range(nbond):
-                at1 = atplt[idx1[i]]; at2 = atplt[idx2[i]]
-                oldidx = np.sort([at1[0], at2[0]])
-                ibd = np.where((bdold==oldidx).all(axis=1))[0]
-                if ibd.shape[0] == 0: continue
-                bdplt.append(
-                    np.hstack([ibd[0], at1[1:], at2[1:]])
-                )
+                saved_bonds = []
+                for i in range(nbond):
+                    at1 = atplt[idx1[i]]; at2 = atplt[idx2[i]]
+                    oldidx = np.sort([at1[0], at2[0]])
+                    ibd = np.where((bdold==oldidx).all(axis=1))[0]
+                    if ibd.shape[0] == 0: continue
+                    bdplt.append(
+                        np.hstack([ibd[0], at1[1:], at2[1:]])
+                    )
 
-                idx = np.where((bond_data[:,0:2]==oldidx).all(axis=1))[0]
-                if idx.shape[0] == 0: continue
-                elif idx.shape[0] == 1: dbd[i] = bond_data[idx[0], 2]
-                else: raise Exception(
-                    "Multiple values defined for the bond between atom {:.0f} and {:.0f}.".format(
-                    self.bonds[ibd[0]][0], self.bonds[ibd[0]][1])
-                )
-                saved_bonds.append(idx[0])
+                    idx = np.where((bond_data[:,0:2]==oldidx).all(axis=1))[0]
+                    if idx.shape[0] == 0: continue
+                    elif idx.shape[0] == 1: dbd[i] = bond_data[idx[0], 2]
+                    else: raise Exception(
+                        "Multiple values defined for the bond between atom {:.0f} and {:.0f}.".format(
+                        self.bonds[ibd[0]][0], self.bonds[ibd[0]][1])
+                    )
+                    saved_bonds.append(idx[0])
 
-            bdplt = np.array(bdplt)
-            bdplt[:, 4:7] += lattpt @ obj.lattice.matrix
-            # not assigned data
-            saved_bonds = np.unique(saved_bonds)
-            if len(saved_bonds) < bond_data.shape[0]:
-                warn("Not all bonds defined by 'bond_data' are available in the visualized structure.",
-                     stacklevel=2)
+                bdplt = np.array(bdplt)
+                bdplt[:, 4:7] += lattpt @ obj.lattice.matrix
+                # not assigned data
+                saved_bonds = np.unique(saved_bonds)
+                if len(saved_bonds) < bond_data.shape[0]:
+                    warn("Not all bonds defined by 'bond_data' are available in the visualized structure.",
+                         stacklevel=2)
+            else:
+                warn("No bond has been identified for the current system. Check your geometry or use 'special_bonds'.", stacklevel=2)
+                bdplt = []
             del idx1, idx2, lattpt, obj, bdold, bond_data, oldidx, saved_bonds
 
         # plot
@@ -1184,32 +1203,33 @@ class CStructure(Structure):
         else:
             bond_radius = 0.15
 
-        if bd_data == False:
-            for ib, b in enumerate(bdplt):
-                bds = mlab.plot3d([b[1], b[4]], [b[2], b[5]], [b[3], b[6]],
-                                  figure=fig,
-                                  color=bond_color,
-                                  tube_radius=bond_radius)
-        else: # use lines rather than tubes
-            bond_radius = 10
-            src = mlab.pipeline.scalar_scatter(bdplt[:, [1,4]].flatten(),
-                                               bdplt[:, [2,5]].flatten(),
-                                               bdplt[:, [3,6]].flatten(),
-                                               np.vstack([dbd, dbd]).T.flatten())
-            src.mlab_source.dataset.lines = [[i, i+1] for i in range(0, 2*nbond, 2)]
-            src.update()
-            lines = mlab.pipeline.stripper(src); del src
-            bds = mlab.pipeline.surface(lines,
-                                        figure=fig,
-                                        colormap=bond_color,
-                                        line_width=bond_radius)
-            cbd = np.zeros([4,], dtype=np.uint8) + 255
-            cbd[0:3] = np.array([i*255 for i in bond_null], dtype=np.uint8)
-            bds.module_manager.scalar_lut_manager.lut.nan_color = tuple(cbd)
+        if len(bdplt) > 0:
+            if bd_data == False:
+                for ib, b in enumerate(bdplt):
+                    bds = mlab.plot3d([b[1], b[4]], [b[2], b[5]], [b[3], b[6]],
+                                      figure=fig,
+                                      color=bond_color,
+                                      tube_radius=bond_radius)
+            else: # use lines rather than tubes
+                bond_radius = 10
+                src = mlab.pipeline.scalar_scatter(bdplt[:, [1,4]].flatten(),
+                                                   bdplt[:, [2,5]].flatten(),
+                                                   bdplt[:, [3,6]].flatten(),
+                                                   np.vstack([dbd, dbd]).T.flatten())
+                src.mlab_source.dataset.lines = [[i, i+1] for i in range(0, 2*nbond, 2)]
+                src.update()
+                lines = mlab.pipeline.stripper(src); del src
+                bds = mlab.pipeline.surface(lines,
+                                            figure=fig,
+                                            colormap=bond_color,
+                                            line_width=bond_radius)
+                cbd = np.zeros([4,], dtype=np.uint8) + 255
+                cbd[0:3] = np.array([i*255 for i in bond_null], dtype=np.uint8)
+                bds.module_manager.scalar_lut_manager.lut.nan_color = tuple(cbd)
 
         ## Lattice
         if cell_display == True:
-            if ndimen == 3:
+            if pdir.shape[0] == 3:
                 lattpts = np.array([[0, 0, 0], [1, 0, 0],
                                     [1, 0, 0], [1, 1, 0],
                                     [1, 1, 0], [0, 1, 0],
@@ -1230,12 +1250,10 @@ class CStructure(Structure):
                                 figure=fig,
                                 color=cell_color,
                                 line_width=cell_linewidth)
-            elif ndimen == 2:
+            elif pdir.shape[0] == 2:
                 lattpts = np.zeros([8, 3], dtype=float)
-                lattpts[:, 0:2] = np.array([[0, 0], [1, 0],
-                                            [1, 0], [1, 1],
-                                            [1, 1], [0, 1],
-                                            [0, 1], [0, 0]]) @ struc.lattice.matrix[0:2, 0:2]
+                lattpts[:, pdir] = np.array([[0, 0], [1, 0], [1, 0], [1, 1],
+                                             [1, 1], [0, 1], [0, 1], [0, 0]]) @ struc.lattice.matrix[np.ix_(pdir,pdir)]
                 lattpts = np.add(lattpts, origin@struc.lattice.matrix)
                 for i in range(0, 8, 2):
                     mlab.plot3d([lattpts[i,0], lattpts[i+1,0]],
@@ -1244,9 +1262,9 @@ class CStructure(Structure):
                                 figure=fig,
                                 color=cell_color,
                                 line_width=cell_linewidth)
-            elif ndimen == 1:
+            elif pdir.shape[0] == 1:
                 lattpts = np.zeros([2, 3], dtype=float)
-                lattpts[:, 0:1] = np.array([[0], [1]]) @ struc.lattice.matrix[0:1, 0:1]
+                lattpts[:, pdir] = np.array([[0], [1]]) @ struc.lattice.matrix[np.ix_(pdir,pdir)]
                 lattpts = np.add(lattpts, origin@struc.lattice.matrix)
                 mlab.plot3d([lattpts[0,0], lattpts[1,0]],
                             [lattpts[0,1], lattpts[1,1]],
