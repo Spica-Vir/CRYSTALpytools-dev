@@ -1739,7 +1739,7 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
 
     # Plot structure
     keys = ['atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
-            'cell_color', 'cell_linewidth', 'scale', 'special_bonds']
+            'cell_color', 'cell_linewidth', 'special_bonds']
     keywords = dict(show_the_scene=False, display_range=display_range)
     for k, v in zip(kwargs.keys(), kwargs.values()):
         if k in keys: keywords[k] = v
