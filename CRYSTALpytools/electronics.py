@@ -1675,8 +1675,7 @@ class ChargeDensity():
         keys = ['colormap', 'opacity', 'transparent', 'color', 'line_width',
                 'vmax', 'vmin', 'title', 'orientation', 'nb_labels', 'label_fmt'
                 'atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
-                'cell_color', 'cell_linewidth', 'display_range', 'bond_scale', 'scale', # scale is for compatibility
-                'special_bonds']
+                'cell_color', 'cell_linewidth', 'display_range', 'special_bonds']
         for k, v in zip(kwargs.keys(), kwargs.values()):
             if k in keys: inputs[k] = v
 
