@@ -1629,7 +1629,6 @@ class ChargeDensity():
             display_range (array): 3\*2 array defining the displayed region of
                 the structure. Fractional coordinates a, b, c are used but only
                 the periodic directions are applied.
-            scale (float): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
             special_bonds (dict): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
             azimuth: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
             elevation: See `mlab.view() <https://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html#view>`_.
