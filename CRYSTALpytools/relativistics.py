@@ -47,7 +47,8 @@ class VectorField():
         """ Generate corresponding object from formatted output.
 
         Args:
-            file (str): File name of fort.25 or CUBE files.
+            file (str|list): File name of the 2D fort.25 file, or list of 3D
+                cube files.
             output (str): Screen output of 'properties' calculation.
             source (str): Currently useless. Must be 'crystal'.
             prop (str): 'MAGNETIZ', 'ORBCURDENS' or 'SPICURDENS'.
@@ -263,7 +264,8 @@ class Magnetization(VectorField):
         and standard screen output (mandatory).
 
         Args:
-            file (str): File name of fort.25 or CUBE (in development) files.
+            file (str|list): File name of the 2D fort.25 file, or list of 3D
+                cube files.
             output (str): Screen output of 'properties' calculation.
             source (str): Currently useless. Must be 'crystal'.
         Returns:
@@ -529,7 +531,8 @@ class OrbitalCurrentDensity(VectorField):
         output unit and standard screen output (mandatory).
 
         Args:
-            file (str): File name of fort.25 or CUBE (in development) files.
+            file (str|list): File name of the 2D fort.25 file, or list of 3D
+                cube files.
             output (str): Screen output of 'properties' calculation.
             source (str): Currently useless. Must be 'crystal'.
         Returns:
@@ -802,7 +805,8 @@ class SpinCurrentDensity(VectorField):
         unit and standard screen output (mandatory).
 
         Args:
-            file (str): File name of fort.25 or CUBE (in development) files.
+            file (str|list): File name of the 2D fort.25 file, or list of 3D
+                cube files.
             output (str): Screen output of 'properties' calculation.
             source (str): Currently useless. Must be 'crystal'.
         Returns:

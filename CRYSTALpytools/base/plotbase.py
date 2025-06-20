@@ -763,38 +763,31 @@ def GridExpand(base, data, display_range):
     idx = np.where(dist<1e-12)[0]
     if len(idx) > 0:
         direct = ['a', 'b', 'c'][idx[0]]
-        raise Exception("Display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
-            direct, direct, dispbg[idx[0]], direct, disped[idx[0]]))
+        raise Exception(f"Display range error along {direct} axis!\n{direct} min = {dispbg[idx[0]]:.2f}, {direct} max = {disped[idx[0]]:.2f}. No data is displayed.")
 
     # new data and new base
-    newdata = np.zeros(np.array(
-        np.round(dist*data.shape, 0), dtype=int
-    ))
+    origin = np.round(np.multiply(dispbg, data.shape), 0)
+    origin = np.array(origin, dtype=int)
+    end = np.round(np.multiply(disped, data.shape), 0)
+    end = np.array(end, dtype=int)
+    newdata = np.zeros([end[i]-origin[i] for i in range(data.ndim)])
+
     newbase = [dispbg @ basev + base[0]]
     for i in range(data.ndim):
         newbase = np.vstack([newbase, basev[i]*dist[i] + newbase[0]])
 
     # duplicate data
-    origin = np.round(np.multiply(dispbg, data.shape), 0)
-    origin = np.array(origin, dtype=int)
-    end = np.round(np.multiply(disped, data.shape), 0)
-    end = np.array(end, dtype=int)
     if data.ndim == 3:
-        oldidx1 = np.arange(origin[0], end[0], 1)
-        oldidx1 = np.sign(oldidx1) * np.abs(oldidx1) % data.shape[0]
-        oldidx2 = np.arange(origin[1], end[1], 1)
-        oldidx2 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[1]
-        oldidx3 = np.arange(origin[2], end[2], 1)
-        oldidx3 = np.sign(oldidx3) * np.abs(oldidx3) % data.shape[2]
+        oldidx1 = np.arange(origin[0], end[0], 1) % data.shape[0]
+        oldidx2 = np.arange(origin[1], end[1], 1) % data.shape[1]
+        oldidx3 = np.arange(origin[2], end[2], 1) % data.shape[2]
         for i, oi in enumerate(oldidx1):
             for j, oj in enumerate(oldidx2):
                 for k, ok in enumerate(oldidx3):
                     newdata[i, j, k] = data[oi, oj, ok]
     else:
-        oldidx1 = np.arange(origin[0], end[0], 1)
-        oldidx1 = np.sign(oldidx1) * np.abs(oldidx1) % data.shape[0]
-        oldidx2 = np.arange(origin[1], end[1], 1)
-        oldidx2 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[1]
+        oldidx1 = np.arange(origin[0], end[0], 1) % data.shape[0]
+        oldidx2 = np.arange(origin[1], end[1], 1) % data.shape[1]
         for i, oi in enumerate(oldidx1):
             for j, oj in enumerate(oldidx2):
                 newdata[i, j] = data[oi, oj]
