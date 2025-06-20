@@ -1500,7 +1500,14 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
                         vmax=vmax,
                         vmin=vmin)
         for k, v in kwargs.items():
-            if k in keys: keywords[k] = v
+            if k in keys:
+                if k == 'colormap' and not isinstance(v, str): # color instead of colormap
+                    color = np.array(v, dtype=float, ndmin=1)
+                    if color.shape[0] != 3 or color.max().round(4) > 1.:
+                        raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
+                    keywords['color'] = tuple(color)
+                else:
+                    keywords[k] = v
 
         plot = mlab.pipeline.iso_surface(grid, **keywords)
     else:
@@ -1637,7 +1644,14 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
                     vmin=vmin)
 
     for k, v in kwargs.items():
-        if k in keys: keywords[k] = v
+        if k in keys:
+            if k == 'colormap' and not isinstance(v, str): # color instead of colormap
+                color = np.array(v, dtype=float, ndmin=1)
+                if color.shape[0] != 3 or color.max().round(4) > 1.:
+                    raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
+                keywords['color'] = tuple(color)
+            else:
+                keywords[k] = v
 
     surf = mlab.pipeline.surface(grid, **keywords)
 
@@ -1727,7 +1741,14 @@ def plot_3Dvector(fig, base, data, display_range, **kwargs):
     keys = ['colormap', 'line_width', 'scale_factor', 'vmax', 'vmin']
     keywords = dict(figure=fig, colormap='jet', vmax=vmax, vmin=vmin)
     for k, v in kwargs.items():
-        if k in keys: keywords[k] = v
+        if k in keys:
+            if k == 'colormap' and not isinstance(v, str): # color instead of colormap
+                color = np.array(v, dtype=float, ndmin=1)
+                if color.shape[0] != 3 or color.max().round(4) > 1.:
+                    raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
+                keywords['color'] = tuple(color)
+            else:
+                keywords[k] = v
 
     plot = mlab.pipeline.vectors(grid, **keywords)
 

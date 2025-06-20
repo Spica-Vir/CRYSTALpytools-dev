@@ -200,11 +200,10 @@ class VectorField():
                 if scal_plot == True:
                     # defaults
                     plot_in = dict(fig=fig, grid_display_range=[[0,1], [0,1], [0,1]],
-                                   color=(0.35, 0.35, 0.35))
+                                   colormap=(0., 0., 0.))
                     for k, v in kwargs.items():
                         if k in vector_key:
                             plot_in[vector_basekey[k]] = v
-                            if k == 'vec_colormap': del plot_in['color']
 
                     # plot vec
                     fig = plot_GeomVector(struc=None, base=self.base,
