@@ -1016,14 +1016,14 @@ def tvtkGrid(base, data, dataY=None, dataZ=None, CenterOrigin=False, InterpGridS
     elif ndim == 2:
         if base.shape[0] != 3 or base.shape[1] != 3:
             raise Exception('3*3 array of point O, A, B must be defined.')
-        data = data.reshape([data.shape[0], data.shape[1], 1])
     else:
         raise ValueError('For 3D/2D data grid only.')
 
     if dataY is not None and dataZ is not None:
         isVector = True
         dataY = np.array(dataY, dtype=float); dataZ = np.array(dataZ, dtype=float)
-        if dataY.ndim!=ndim or if dataZ.ndim!=ndim:
+
+        if dataY.ndim!=ndim or dataZ.ndim!=ndim:
             raise Exception("Inconsistent number of dimensions between (u, v, w) vectors.")
         for i in range(ndim):
             if dataY.shape[i]!=data.shape[i] or dataZ.shape[i]!=data.shape[i]:
@@ -1032,6 +1032,13 @@ def tvtkGrid(base, data, dataY=None, dataZ=None, CenterOrigin=False, InterpGridS
         isVector = False
         if dataY is not None or dataZ is not None:
             warn("Two data grids defined. Vector field requires three grids. The secondary input is ignored.", stacklevel=2)
+
+    # consistent data shapes
+    if ndim == 2:
+        data = data.reshape([data.shape[0], data.shape[1], 1])
+        if isVector == True:
+            dataY = dataY.reshape([dataY.shape[0], dataY.shape[1], 1])
+            dataZ = dataZ.reshape([dataZ.shape[0], dataZ.shape[1], 1])
 
     # alignment
     bvec = np.array([base[i]-base[0] for i in range(1, ndim+1)])
@@ -1081,6 +1088,9 @@ def tvtkGrid(base, data, dataY=None, dataZ=None, CenterOrigin=False, InterpGridS
         else:
             grid.point_data.vectors = np.stack((data, dataY, dataZ), axis=-1).reshape([-1, 3])
             grid.point_data.vectors.name = 'vectors'
+            # supress warnings in quiver-only plots
+            grid.point_data.scalars = np.linalg.norm(grid.point_data.vectors, axis=-1)
+            grid.point_data.scalars.name = 'scalars'
         grid.dimensions = data.shape
 
     # StructuredGrid
@@ -1104,6 +1114,9 @@ def tvtkGrid(base, data, dataY=None, dataZ=None, CenterOrigin=False, InterpGridS
         else:
             grid.point_data.vectors = np.stack((data, dataY, dataZ), axis=-1).reshape([-1, 3])
             grid.point_data.vectors.name = 'vectors'
+            # supress warnings in quiver-only plots
+            grid.point_data.scalars = np.linalg.norm(grid.point_data.vectors, axis=-1)
+            grid.point_data.scalars.name = 'scalars'
 
     # Interpolated ImageData grid, only for scalar fields
     else:
@@ -1686,6 +1699,7 @@ def plot_3Dvector(fig, base, data, display_range, **kwargs):
     # Input processing and sanity check
     if data.ndim == 3 and base.shape[0] == 3:
         grid_dim = 2
+        base = np.vstack([base[1], base[2], base[0]])
     elif data.ndim == 4 and base.shape[0] == 4:
         grid_dim = 3
     else:

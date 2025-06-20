@@ -64,7 +64,8 @@ class VectorField():
     def plot_2D(self, unit, levels, quiverplot, quiverscale, colorplot, colormap,
                 cbar_label, a_range, b_range, rectangle, edgeplot,
                 x_ticks, y_ticks, figsize, **kwargs):
-        """ Plot 2D vector field.
+        """ Plot 2D vector field. Only accept integer ``ax_index`` inputs, i.e.,
+        only plots on a single axis.
 
         3 styles are available:
 
@@ -145,10 +146,6 @@ class VectorField():
         Explanations of input/output arguments are detailed in specific classes.
         """
         from CRYSTALpytools.base.plotbase import plot_GeomScalar, plot_GeomVector
-        try:
-            from mayavi import mlab
-        except ModuleNotFoundError:
-            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
 
         # unit
         uold = self.unit
@@ -185,7 +182,11 @@ class VectorField():
 
         try:
             if scal_plot == True:
-                plot_in = dict()
+                # defaults
+                plot_in = dict(isovalue=None, volume_3d=False, contour_2d=False,
+                               interp='no interp', interp_size=1,
+                               grid_display_range=[[0,1], [0,1], [0,1]],
+                               colormap='jet')
                 for k, v in kwargs.items():
                     if k in struc_key:
                         plot_in[k] = v
@@ -197,16 +198,20 @@ class VectorField():
 
             if vec_plot == True:
                 if scal_plot == True:
-                    plot_in = dict(fig=fig)
+                    # defaults
+                    plot_in = dict(fig=fig, grid_display_range=[[0,1], [0,1], [0,1]],
+                                   color=(0.35, 0.35, 0.35))
                     for k, v in kwargs.items():
                         if k in vector_key:
                             plot_in[vector_basekey[k]] = v
+                            if k == 'vec_colormap': del plot_in['color']
 
                     # plot vec
                     fig = plot_GeomVector(struc=None, base=self.base,
                                           data=self.data, **plot_in)
                 else:
-                    plot_in = dict()
+                    # defaults
+                    plot_in = dict(grid_display_range=[[0,1], [0,1], [0,1]], colormap='jet')
                     for k, v in kwargs.items():
                         if k in struc_key:
                             plot_in[k] = v
@@ -329,16 +334,20 @@ class Magnetization(VectorField):
         else:
             cbar_label = None
 
+        # force ax_index to be 1D array
+        if 'ax_index' in kwargs.keys():
+            ax_index = np.array(kwargs['ax_index'], ndmin=1, dtype=int)
+            if len(ax_index) != 0:
+                raise Exception("Magnetization does not support multiple subplots.")
+        else:
+            ax_index = [0]
+        kwargs['ax_index'] = ax_index[0]
+
         fig = super().plot_2D(unit, levels, quiverplot, quiverscale, colorplot,
                               colormap, cbar_label, a_range, b_range, rectangle,
                               edgeplot, x_ticks, y_ticks, figsize, **kwargs)
 
         # title and axis labels
-        if 'ax_index' in kwargs.keys():
-            ax_index = kwargs['ax_index']
-        else:
-            ax_index = [0]
-
         for iax in ax_index:
             if unit.lower() == 'si':
                 fig.axes[iax].set_xlabel(r'$\AA$')
@@ -429,6 +438,11 @@ class Magnetization(VectorField):
         Returns:
             fig: MayaVi scence object, if ``show_the_scene=False``.
         """
+        try:
+            from mayavi import mlab
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
         # Plot
         fig = super().plot_3D(unit, vec_plot=vec_plot, scal_plot=scal_plot, **kwargs)
 
@@ -510,7 +524,7 @@ class OrbitalCurrentDensity(VectorField):
         self.type = 'ORBCURDENS'
 
     @classmethod
-    def from_file(cls, file, output， source='crystal'):
+    def from_file(cls, file, output, source='crystal'):
         """
         Generate a ``OrbitalCurrentDensity`` object from CRYSTAL formatted
         output unit and standard screen output (mandatory).
@@ -587,16 +601,20 @@ class OrbitalCurrentDensity(VectorField):
         else:
             cbar_label = None
 
+        # force ax_index to be 1D array
+        if 'ax_index' in kwargs.keys():
+            ax_index = np.array(kwargs['ax_index'], ndmin=1, dtype=int)
+            if len(ax_index) != 1:
+                raise Exception("Oribtal current density does not support multiple subplots.")
+        else:
+            ax_index = [0]
+        kwargs['ax_index'] = ax_index[0]
+
         fig = super().plot_2D(unit, levels, quiverplot, quiverscale, colorplot,
                               colormap, cbar_label, a_range, b_range, rectangle,
                               edgeplot, x_ticks, y_ticks, figsize, **kwargs)
 
         # title and axis labels
-        if 'ax_index' in kwargs.keys():
-            ax_index = kwargs['ax_index']
-        else:
-            ax_index = [0]
-
         for iax in ax_index:
             if unit.lower() == 'si':
                 fig.axes[iax].set_xlabel(r'$\AA$')
@@ -687,6 +705,11 @@ class OrbitalCurrentDensity(VectorField):
         Returns:
             fig: MayaVi scence object, if ``show_the_scene=False``.
         """
+        try:
+            from mayavi import mlab
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
         # Plot
         fig = super().plot_3D(unit, vec_plot=vec_plot, scal_plot=scal_plot, **kwargs)
 
@@ -842,6 +865,8 @@ class SpinCurrentDensity(VectorField):
         Returns:
             fig (Figure): Matplotlib Figure class.
         """
+        import matplotlib.pyplot as plt
+
         # cbar_label
         if isinstance(cbar_label, str):
             if cbar_label.lower() == 'default':
@@ -861,13 +886,20 @@ class SpinCurrentDensity(VectorField):
             direction[id] = direction[id].lower()
             if direction[id] not in ['x', 'y', 'z']:
                 raise ValueError(f"Unknown direction entry: '{direction[id]}'.")
-        # figure
+
+        # force ax_index to be 1D array
         if 'ax_index' in kwargs.keys():
-            ax_index = kwargs['ax_index']
+            ax_index = np.array(kwargs['ax_index'], ndmin=1, dtype=int)
             if len(ax_index) != len(direction):
                 raise Exception("Inconsistent lengthes of 'direction 'and 'ax_index'.")
         else:
             ax_index = [i for i in range(len(direction))]
+        kwargs['ax_index'] = ax_index
+
+        if 'fig' not in kwargs.keys():
+            fig, _ = plt.subplots(1, len(direction), figsize=figsize,
+                                  sharex=True, sharey=True, layout='tight')
+            kwargs['fig'] = fig
 
         for d, iax in zip(direction, ax_index):
             kwargs['ax_index'] = iax
@@ -971,6 +1003,11 @@ class SpinCurrentDensity(VectorField):
         Returns:
             fig: MayaVi scence object, if ``show_the_scene=False``.
         """
+        try:
+            from mayavi import mlab
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+
         props = {'x' : 'data_x', 'y' : 'data_y', 'z' : 'data_z'}
         direction = str(direction).lower()
         if direction not in ['x', 'y', 'z']:

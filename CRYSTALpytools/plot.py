@@ -339,10 +339,10 @@ def plot_relativistics2D(
             fig = o.plot_2D(unit, direction, levels, quiverplot, quiverscale,
                             colorplot, colormap, cbar_label, a_range, b_range,
                             rectangle, edgeplot, x_ticks, y_ticks, 'default',
-                            figsize, fig, iax, **kwargs)
+                            figsize, **kwargs)
             ax_index += len(direction)
         else:
-            kwargs['ax_index'] = [ax_index]
+            kwargs['ax_index'] = ax_index
             fig = o.plot_2D(unit, levels, quiverplot, quiverscale, colorplot,
                             colormap, cbar_label, a_range, b_range, rectangle,
                             edgeplot, x_ticks, y_ticks, 'default', figsize, **kwargs)

@@ -3210,11 +3210,11 @@ class Properties_output(POutBASE):
             raise ValueError("Unknown type: '{}'.".format(type))
 
         if not hasattr(self, 'file_name'):
-            if np.all(index==None):
+            if index is None:
                 raise Exception("Properties output file is mandatory here, otherwise specify the index.")
             index = np.array(index, dtype=int, ndmin=1)
         else:
-            struc = super().get_geometry()
+            # struc = super().get_geometry()
             # get corresponding MPNET entries from output file
             df = pd.DataFrame(self.data)
             headers = df[df[0].str.contains(r'^\s*-%-[0-4]MAPN')].index.to_numpy(dtype=int)
@@ -3270,20 +3270,20 @@ class Properties_output(POutBASE):
             obj._set_unit('Angstrom')
         elif type == 'MAGNETIZ':
             obj = Magnetization(np.dstack([map[0], map[1], map[2]]),
-                                units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
-                                2, struc, unit)
+                                np.vstack([a[0],b[0],c[0]]),
+                                2, struc[0], unit)
             obj._set_unit('SI')
         elif type == 'ORBCURDENS':
             obj = OrbitalCurrentDensity(np.dstack([map[0], map[1], map[2]]),
-                                        units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
-                                        2, struc, unit)
+                                        np.vstack([a[0],b[0],c[0]]),
+                                        2, struc[0], unit)
             obj._set_unit('SI')
         elif type == 'SPICURDENS':
             obj = SpinCurrentDensity(np.dstack([map[0], map[1], map[2]]),
                                      np.dstack([map[3], map[4], map[5]]),
                                      np.dstack([map[6], map[7], map[8]]),
-                                     units.au_to_angstrom(np.vstack([a[0],b[0],c[0]])),
-                                     2, struc, unit)
+                                     np.vstack([a[0],b[0],c[0]]),
+                                     2, struc[0], unit)
             obj._set_unit('SI')
 
         setattr(self, type, obj)
