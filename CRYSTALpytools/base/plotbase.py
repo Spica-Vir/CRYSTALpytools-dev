@@ -983,8 +983,8 @@ def tvtkGrid(base, data, dataY=None, dataZ=None, CenterOrigin=False, InterpGridS
     Args:
         base (array): Base vectors, 3(4)\*3 array of origin and point A, B(, C)
         data (array): Scalar/X vector field data in column-major order, i.e., nA\*nB\*nC.
-        dataY (bool): Y vector fields.
-        dataZ (bool): Z vector fields.
+        dataY (array): Y vector fields.
+        dataZ (array): Z vector fields.
         CenterOrigin (bool): Put origin of base vectors in the center. Usually
             for reciprocal space visualization.
         InterpGridSize (array|int|None): Interpolate non-orthogonal data into
@@ -1492,6 +1492,7 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
                         colormap='jet',
                         vmax=vmax,
                         vmin=vmin)
+        single_color = False
         for k, v in kwargs.items():
             if k in keys:
                 if k == 'colormap' and not isinstance(v, str): # color instead of colormap
@@ -1499,11 +1500,14 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
                     if color.shape[0] != 3 or color.max().round(4) > 1.:
                         raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
                     keywords['color'] = tuple(color)
+                    single_color = True
                 else:
                     keywords[k] = v
 
         plot = mlab.pipeline.iso_surface(grid, **keywords)
     else:
+        single_color = False
+
         if vmin*vmax >= 0: nullvalue = vmin - (vmax-vmin)
         else: nullvalue = 0.
 
@@ -1537,12 +1541,14 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
         plot._otf = otf
         plot._volume_property.set_scalar_opacity(otf)
 
-    keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
-    keywords = dict(object=plot)
-    for k, v in kwargs.items():
-        if k in keys: keywords[k] = v
-    mlab.scalarbar(**keywords)
-
+    if single_color == False:
+        keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+        keywords = dict(object=plot)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
+        mlab.scalarbar(**keywords)
+    else: # turn colorbar off
+        plot.module_manager.scalar_lut_manager.show_scalar_bar = False
     return fig
 
 
@@ -1635,7 +1641,7 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
                     colormap='jet',
                     vmax=vmax,
                     vmin=vmin)
-
+    single_color = False
     for k, v in kwargs.items():
         if k in keys:
             if k == 'colormap' and not isinstance(v, str): # color instead of colormap
@@ -1643,6 +1649,7 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
                 if color.shape[0] != 3 or color.max().round(4) > 1.:
                     raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
                 keywords['color'] = tuple(color)
+                single_color = True
             else:
                 keywords[k] = v
 
@@ -1660,12 +1667,14 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
 
         lines = mlab.pipeline.contour_surface(grid, **keywords)
 
-    keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
-    keywords = dict(object=surf)
-    for k, v in kwargs.items():
-        if k in keys: keywords[k] = v
-    mlab.scalarbar(**keywords)
-
+    if single_color == False:
+        keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+        keywords = dict(object=surf)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
+        mlab.scalarbar(**keywords)
+    else: # turn colorbar off
+        surf.module_manager.scalar_lut_manager.show_scalar_bar = False
     return fig
 
 
@@ -1683,8 +1692,10 @@ def plot_3Dvector(fig, base, data, display_range, **kwargs):
         colormap (turple|str): Colormap of quivers. Or a 1\*3 RGB turple from 0 to 1 to define colors.
         line_width (float): The width of the lines.
         scale_factor (float): The scaling applied to the arrows
-        vmax (float): Maximum value of colormap.
-        vmin (float): Minimum value of colormap.
+        vmax (float): Maximum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        vmin (float): Minimum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
         title (str): Colorbar title.
         orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
         nb_labels (int): The number of labels to display on the colorbar.
@@ -1714,15 +1725,21 @@ def plot_3Dvector(fig, base, data, display_range, **kwargs):
     dataX = data[..., 0].T
     dataY = data[..., 1].T
     dataZ = data[..., 2].T
+    dataN = np.linalg.norm(data, axis=-1).T.round(12)
+    del data
 
+    # V range
     if 'vmin' in kwargs.keys():
-        vmin = kwargs['vmin']
+        vmin = np.round(kwargs['vmin'], 12)
     else:
-        vmin = np.min(data)
+        vmin = np.round(np.min(dataN), 12)
     if 'vmax' in kwargs.keys():
-        vmax = kwargs['vmax']
+        vmax = np.round(kwargs['vmax'], 12)
     else:
-        vmax = np.max(data)
+        vmax = np.round(np.max(dataN), 12)
+
+    idx = np.where((dataN<vmin)|(dataN>vmax)); del dataN
+    dataX[idx] = 0.; dataY[idx] = 0.; dataZ[idx] = 0.
 
     # Expansion
     newbase, dataX = GridExpand(base, dataX, display_range)
@@ -1731,8 +1748,9 @@ def plot_3Dvector(fig, base, data, display_range, **kwargs):
 
     # Visualization
     grid = tvtkGrid(newbase, dataX, dataY=dataY, dataZ=dataZ, CenterOrigin=False, InterpGridSize=None)
-    keys = ['colormap', 'line_width', 'scale_factor', 'vmax', 'vmin']
+    keys = ['colormap', 'line_width', 'scale_factor', 'vmax', 'vmin', 'mask_points']
     keywords = dict(figure=fig, colormap='jet', vmax=vmax, vmin=vmin)
+    single_color = False
     for k, v in kwargs.items():
         if k in keys:
             if k == 'colormap' and not isinstance(v, str): # color instead of colormap
@@ -1740,16 +1758,20 @@ def plot_3Dvector(fig, base, data, display_range, **kwargs):
                 if color.shape[0] != 3 or color.max().round(4) > 1.:
                     raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
                 keywords['color'] = tuple(color)
+                single_color = True
             else:
                 keywords[k] = v
 
     plot = mlab.pipeline.vectors(grid, **keywords)
 
-    keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
-    keywords = dict(object=plot)
-    for k, v in kwargs.items():
-        if k in keys: keywords[k] = v
-    mlab.scalarbar(**keywords)
+    if single_color == False:
+        keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+        keywords = dict(object=plot)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
+        mlab.scalarbar(**keywords)
+    else: # turn colorbar off
+        plot.module_manager.scalar_lut_manager.show_scalar_bar = False
     return fig
 
 
@@ -1790,8 +1812,10 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
         transparent (bool): Scalar-dependent opacity. *Not for volume_3d=True*.
         color (turple): Color of contour lines. *'contour_2d=True' only*.
         line_width (float): Width of 2D contour lines. *'contour_2d=True' only*.
-        vmax (float): Maximum value of colormap.
-        vmin (float): Minimum value of colormap.
+        vmax (float): Maximum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        vmin (float): Minimum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
         title (str): Colorbar title.
         orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
         nb_labels (int): The number of labels to display on the colorbar.
@@ -1917,8 +1941,10 @@ def plot_GeomVector(struc, base, data, grid_display_range, **kwargs):
             to 1 to define colors.
         line_width (float): The width of the lines.
         scale_factor (float): The scaling applied to the arrows
-        vmax (float): Maximum value of colormap.
-        vmin (float): Minimum value of colormap.
+        vmax (float): Maximum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        vmin (float): Minimum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
         title (str): Colorbar title.
         orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
         nb_labels (int): The number of labels to display on the colorbar.
@@ -1979,8 +2005,8 @@ def plot_GeomVector(struc, base, data, grid_display_range, **kwargs):
             fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
 
     # Plot data
-    keys = ['colormap', 'line_width', 'scale_factor', 'vmax', 'vmin', 'title',
-            'orientation', 'nb_labels', 'label_fmt']
+    keys = ['colormap', 'line_width', 'scale_factor', 'mask_points', 'vmax', 'vmin',
+            'title', 'orientation', 'nb_labels', 'label_fmt']
     keywords = dict(fig=fig, base=base, data=data, display_range=grid_display_range)
     for k, v in kwargs.items():
         if k in keys: keywords[k] = v

@@ -3294,7 +3294,6 @@ class Properties_output(POutBASE):
             spin, a, b, c, cosxy, struc, grid, unit = CrgraParser.mapn(file[0], index)
             if type == 'DENSITY':
                 base = np.vstack([a,b,c])
-                grid = grid[:,:,0]
             else:
                 base = np.vstack([a[0],b[0],c[0]])
                 struc = struc[0]

@@ -10,15 +10,7 @@ from CRYSTALpytools import units
 from CRYSTALpytools.electronics import ChargeDensity as ChgDens
 
 class ChargeDensity(ChgDens):
-    """
-    Same as ``electronics.ChargeDensity``, the spin density. But its dimension
-    is kept to be commensurate with other keywords of the 'PROPS2COMP' block.
-
-    .. note::
-
-        Its ``type`` attribute is 'ECHG' rather than 'DENSITY'
-
-    """
+    """Same as ``electronics.ChargeDensity``, with ``from_file`` redefined."""
     @classmethod
     def from_file(cls, file, output, source='crystal'):
         """
@@ -173,12 +165,12 @@ class VectorField():
 
         ## except struc, base, data of base.plotbase.plot_GeomVector()
         vector_key = ['vec_grid_display_range', 'vec_colormap', 'vec_linewidth',
-                      'vec_linescale', 'vec_vmax', 'vec_vmin', 'vec_title',
+                      'vec_linescale', 'vec_mask', 'vec_vmax', 'vec_vmin', 'vec_title',
                       'vec_orientation', 'vec_nb_labels', 'vec_label_fmt']
         vector_basekey = dict(
             vec_grid_display_range='grid_display_range', vec_colormap='colormap',
-            vec_linewidth='line_width', vec_linescale='scale_factor', vec_vmax='vmax',
-            vec_vmin='vmin', vec_title='title', vec_orientation='orientation',
+            vec_linewidth='line_width', vec_linescale='scale_factor', vec_mask='mask_points',
+            vec_vmax='vmax', vec_vmin='vmin', vec_title='title', vec_orientation='orientation',
             vec_nb_labels='nb_labels', vec_label_fmt='label_fmt')
 
         try:
@@ -379,8 +371,11 @@ class Magnetization(VectorField):
                 used but only the periodic directions are applied.
             vec_colormap (turple|str): Colormap of vector field. Or a 1\*3
                 RGB turple from 0 to 1 to define colors of vectors.
-            vec_vmax (float): Maximum value of vector field's colormap.
-            vec_vmin (float): Minimum value of vector field's colormap.
+            vec_mask (int): Plot one out of ``vec_mask`` vectors, when the grid is dense.
+            vec_vmax (float): Maximum value of vector field's colormap. Also
+                used to define the range of displayed vectors.
+            vec_vmin (float): Minimum value of vector field's colormap. Also
+                used to define the range of displayed vectors.
             vec_title (str): Vector field's colorbar title.
             vec_orientation (str): Orientation of vector field's colorbar, 'horizontal' or 'vertical'.
             vec_nb_labels (int): The number of labels to display on the vector field's colorbar.
@@ -647,8 +642,11 @@ class OrbitalCurrentDensity(VectorField):
                 used but only the periodic directions are applied.
             vec_colormap (turple|str): Colormap of vector field. Or a 1\*3
                 RGB turple from 0 to 1 to define colors of vectors.
-            vec_vmax (float): Maximum value of vector field's colormap.
-            vec_vmin (float): Minimum value of vector field's colormap.
+            vec_mask (int): Plot one out of ``vec_mask`` vectors, when the grid is dense.
+            vec_vmax (float): Maximum value of vector field's colormap. Also
+                used to define the range of displayed vectors.
+            vec_vmin (float): Minimum value of vector field's colormap. Also
+                used to define the range of displayed vectors.
             vec_title (str): Vector field's colorbar title.
             vec_orientation (str): Orientation of vector field's colorbar, 'horizontal' or 'vertical'.
             vec_nb_labels (int): The number of labels to display on the vector field's colorbar.
@@ -946,8 +944,11 @@ class SpinCurrentDensity(VectorField):
                 used but only the periodic directions are applied.
             vec_colormap (turple|str): Colormap of vector field. Or a 1\*3
                 RGB turple from 0 to 1 to define colors of vectors.
-            vec_vmax (float): Maximum value of vector field's colormap.
-            vec_vmin (float): Minimum value of vector field's colormap.
+            vec_mask (int): Plot one out of ``vec_mask`` vectors, when the grid is dense.
+            vec_vmax (float): Maximum value of vector field's colormap. Also
+                used to define the range of displayed vectors.
+            vec_vmin (float): Minimum value of vector field's colormap. Also
+                used to define the range of displayed vectors.
             vec_title (str): Vector field's colorbar title.
             vec_orientation (str): Orientation of vector field's colorbar, 'horizontal' or 'vertical'.
             vec_nb_labels (int): The number of labels to display on the vector field's colorbar.
