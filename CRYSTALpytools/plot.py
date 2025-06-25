@@ -331,20 +331,21 @@ def plot_relativistics2D(
     fig, ax = plt.subplots(layout[0], layout[1], figsize=figsize,
                            sharex=sharex, sharey=sharey, layout='tight')
     # plot
-    ax_index = 0
+    ax_index = 0; kwargs['fig'] = fig
     for o in objs:
         if isinstance(o, SpinCurrentDensity):
             iax = [ax_index+i for i in range(len(direction))]
+            kwargs['ax_index'] = iax
             fig = o.plot_2D(unit, direction, levels, quiverplot, quiverscale,
                             colorplot, colormap, cbar_label, a_range, b_range,
                             rectangle, edgeplot, x_ticks, y_ticks, 'default',
-                            figsize, fig, iax, **kwargs)
+                            figsize, **kwargs)
             ax_index += len(direction)
         else:
+            kwargs['ax_index'] = ax_index
             fig = o.plot_2D(unit, levels, quiverplot, quiverscale, colorplot,
                             colormap, cbar_label, a_range, b_range, rectangle,
-                            edgeplot, x_ticks, y_ticks, 'default', figsize,
-                            fig, [ax_index], **kwargs)
+                            edgeplot, x_ticks, y_ticks, 'default', figsize, **kwargs)
             ax_index += 1
     # title
     if np.all(title!=None):

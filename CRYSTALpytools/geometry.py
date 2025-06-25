@@ -1160,11 +1160,11 @@ class CStructure(Structure):
             del idx1, idx2, lattpt, obj, bdold, bond_data, oldidx, saved_bonds
 
         # plot
-        ## fig passed, developer only
-        if 'fig' in kwargs.keys():
-            del kwargs[k]
-        else:
-            fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
+        ## fig passed, Seems useless
+        # if 'fig' in kwargs.keys():
+        #     del kwargs[k]
+        # else:
+        fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
         ## Atoms
         radii = np.array([struc.species[int(i)].atomic_radius for i in atplt[:,0]])
         radii[np.where(radii<0.4)[0]] = 0.4 # H too small

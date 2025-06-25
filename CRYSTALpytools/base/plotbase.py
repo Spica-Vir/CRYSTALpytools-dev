@@ -763,38 +763,31 @@ def GridExpand(base, data, display_range):
     idx = np.where(dist<1e-12)[0]
     if len(idx) > 0:
         direct = ['a', 'b', 'c'][idx[0]]
-        raise Exception("Display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
-            direct, direct, dispbg[idx[0]], direct, disped[idx[0]]))
+        raise Exception(f"Display range error along {direct} axis!\n{direct} min = {dispbg[idx[0]]:.2f}, {direct} max = {disped[idx[0]]:.2f}. No data is displayed.")
 
     # new data and new base
-    newdata = np.zeros(np.array(
-        np.round(dist*data.shape, 0), dtype=int
-    ))
+    origin = np.round(np.multiply(dispbg, data.shape), 0)
+    origin = np.array(origin, dtype=int)
+    end = np.round(np.multiply(disped, data.shape), 0)
+    end = np.array(end, dtype=int)
+    newdata = np.zeros([end[i]-origin[i] for i in range(data.ndim)])
+
     newbase = [dispbg @ basev + base[0]]
     for i in range(data.ndim):
         newbase = np.vstack([newbase, basev[i]*dist[i] + newbase[0]])
 
     # duplicate data
-    origin = np.round(np.multiply(dispbg, data.shape), 0)
-    origin = np.array(origin, dtype=int)
-    end = np.round(np.multiply(disped, data.shape), 0)
-    end = np.array(end, dtype=int)
     if data.ndim == 3:
-        oldidx1 = np.arange(origin[0], end[0], 1)
-        oldidx1 = np.sign(oldidx1) * np.abs(oldidx1) % data.shape[0]
-        oldidx2 = np.arange(origin[1], end[1], 1)
-        oldidx2 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[1]
-        oldidx3 = np.arange(origin[2], end[2], 1)
-        oldidx3 = np.sign(oldidx3) * np.abs(oldidx3) % data.shape[2]
+        oldidx1 = np.arange(origin[0], end[0], 1) % data.shape[0]
+        oldidx2 = np.arange(origin[1], end[1], 1) % data.shape[1]
+        oldidx3 = np.arange(origin[2], end[2], 1) % data.shape[2]
         for i, oi in enumerate(oldidx1):
             for j, oj in enumerate(oldidx2):
                 for k, ok in enumerate(oldidx3):
                     newdata[i, j, k] = data[oi, oj, ok]
     else:
-        oldidx1 = np.arange(origin[0], end[0], 1)
-        oldidx1 = np.sign(oldidx1) * np.abs(oldidx1) % data.shape[0]
-        oldidx2 = np.arange(origin[1], end[1], 1)
-        oldidx2 = np.sign(oldidx2) * np.abs(oldidx2) % data.shape[1]
+        oldidx1 = np.arange(origin[0], end[0], 1) % data.shape[0]
+        oldidx2 = np.arange(origin[1], end[1], 1) % data.shape[1]
         for i, oi in enumerate(oldidx1):
             for j, oj in enumerate(oldidx2):
                 newdata[i, j] = data[oi, oj]
@@ -972,13 +965,13 @@ def GridRotation2D(base):
     return rot, disp
 
 
-def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
+def tvtkGrid(base, data, dataY=None, dataZ=None, CenterOrigin=False, InterpGridSize=None, **kwargs):
     """
     .. _ref-tvtkGrid:
 
     Define a 3D/2D tvtk Grid for `MayaVi <https://docs.enthought.com/mayavi/mayavi/data.html>`_.
-    Only for representing **3D/2D scalar field** defined in the periodic,
-    uniform mesh.
+    Only for representing **3D/2D scalar/vector fields** defined in the
+    **non-periodic, uniform mesh**.
 
     * For orthogonal data grid aligned to x, y and z axes, return to the
         ``ImageData`` class.  
@@ -987,13 +980,11 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
         the `scipy.interpolate.griddata() <https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.griddata.html>`_
         method and linear interpolation. Might be **very time consuming**.
 
-    .. note::
-
-        For generality, the input data grid is a non-periodic one.
-
     Args:
         base (array): Base vectors, 3(4)\*3 array of origin and point A, B(, C)
-        data (array): Scalar field data in column-major order, i.e., nA\*nB\*nC.
+        data (array): Scalar/X vector field data in column-major order, i.e., nA\*nB\*nC.
+        dataY (array): Y vector fields.
+        dataZ (array): Z vector fields.
         CenterOrigin (bool): Put origin of base vectors in the center. Usually
             for reciprocal space visualization.
         InterpGridSize (array|int|None): Interpolate non-orthogonal data into
@@ -1014,13 +1005,33 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
     ndim = data.ndim
     if ndim == 3:
         if base.shape[0] != 4 or base.shape[1] != 3:
-            raise ValueError('4*3 array of point O, A, B, C must be defined.')
+            raise Exception('4*3 array of point O, A, B, C must be defined.')
     elif ndim == 2:
         if base.shape[0] != 3 or base.shape[1] != 3:
-            raise ValueError('3*3 array of point O, A, B must be defined.')
-        data = data.reshape([data.shape[0], data.shape[1], 1])
+            raise Exception('3*3 array of point O, A, B must be defined.')
     else:
         raise ValueError('For 3D/2D data grid only.')
+
+    if dataY is not None and dataZ is not None:
+        isVector = True
+        dataY = np.array(dataY, dtype=float); dataZ = np.array(dataZ, dtype=float)
+
+        if dataY.ndim!=ndim or dataZ.ndim!=ndim:
+            raise Exception("Inconsistent number of dimensions between (u, v, w) vectors.")
+        for i in range(ndim):
+            if dataY.shape[i]!=data.shape[i] or dataZ.shape[i]!=data.shape[i]:
+                raise Exception("Inconsistent shapes between (u, v, w) vectors.")
+    else:
+        isVector = False
+        if dataY is not None or dataZ is not None:
+            warn("Two data grids defined. Vector field requires three grids. The secondary input is ignored.", stacklevel=2)
+
+    # consistent data shapes
+    if ndim == 2:
+        data = data.reshape([data.shape[0], data.shape[1], 1])
+        if isVector == True:
+            dataY = dataY.reshape([dataY.shape[0], dataY.shape[1], 1])
+            dataZ = dataZ.reshape([dataZ.shape[0], dataZ.shape[1], 1])
 
     # alignment
     bvec = np.array([base[i]-base[0] for i in range(1, ndim+1)])
@@ -1029,17 +1040,21 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
     align = bvec @ np.eye(3)
 
     # Regular interpolation size
-    if np.all(InterpGridSize==None):
+    if InterpGridSize is None:
         InterpGrid = False
     else:
-        InterpGrid = True
-        size = np.array(InterpGridSize, ndmin=1, dtype=int)
-        if len(size) == 1:
-            size = size.repeat(ndim)
-        if len(size) != ndim:
-            raise ValueError("Specified dimension of interpolation = {:d}, not commensurate with grid dimensionality.".format(len(size)))
-        if np.all(size<1):
-            raise ValueError("'InterpGridSize' must have values larger than or equal to 1.")
+        if isVector == True:
+            warn("Orthogonal regular grid interpolation not available for vector fields.", stacklevel=2)
+            InterpGrid = False
+        else:
+            InterpGrid = True
+            size = np.array(InterpGridSize, ndmin=1, dtype=int)
+            if len(size) == 1:
+                size = size.repeat(ndim)
+            if len(size) != ndim:
+                raise ValueError("Specified dimension of interpolation = {:d}, not commensurate with grid dimensionality.".format(len(size)))
+            if np.all(size<1):
+                raise ValueError("'InterpGridSize' must have values larger than or equal to 1.")
 
     # ImageData
     isOrthogonal = True
@@ -1060,8 +1075,15 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
             spacing = (bvnorm[0]/(data.shape[0]-1),
                        bvnorm[1]/(data.shape[1]-1), 1.)
         grid = tvtk.ImageData(spacing=spacing, origin=origin)
-        grid.point_data.scalars = data.flatten(order='F')
-        grid.point_data.scalars.name = 'scalars'
+        if isVector == False:
+            grid.point_data.scalars = data.flatten(order='F')
+            grid.point_data.scalars.name = 'scalars'
+        else:
+            grid.point_data.vectors = np.stack((data, dataY, dataZ), axis=-1).reshape([-1, 3])
+            grid.point_data.vectors.name = 'vectors'
+            # supress warnings in quiver-only plots
+            grid.point_data.scalars = np.linalg.norm(grid.point_data.vectors, axis=-1)
+            grid.point_data.scalars.name = 'scalars'
         grid.dimensions = data.shape
 
     # StructuredGrid
@@ -1079,10 +1101,17 @@ def tvtkGrid(base, data, CenterOrigin, InterpGridSize, **kwargs):
         # Use x, y, z, consistent with coordinates
         grid = tvtk.StructuredGrid(dimensions=(data.shape[2], data.shape[1], data.shape[0]))
         grid.points = pts + base[0]
-        grid.point_data.scalars = data.flatten()
-        grid.point_data.scalars.name = 'scalars'
+        if isVector == False:
+            grid.point_data.scalars = data.flatten()
+            grid.point_data.scalars.name = 'scalars'
+        else:
+            grid.point_data.vectors = np.stack((data, dataY, dataZ), axis=-1).reshape([-1, 3])
+            grid.point_data.vectors.name = 'vectors'
+            # supress warnings in quiver-only plots
+            grid.point_data.scalars = np.linalg.norm(grid.point_data.vectors, axis=-1)
+            grid.point_data.scalars.name = 'scalars'
 
-    # Interpolated ImageData grid.
+    # Interpolated ImageData grid, only for scalar fields
     else:
         # Old grid
         pts = np.meshgrid(
@@ -1463,11 +1492,22 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
                         colormap='jet',
                         vmax=vmax,
                         vmin=vmin)
-        for k, v in zip(kwargs.keys(), kwargs.values()):
-            if k in keys: keywords[k] = v
+        single_color = False
+        for k, v in kwargs.items():
+            if k in keys:
+                if k == 'colormap' and not isinstance(v, str): # color instead of colormap
+                    color = np.array(v, dtype=float, ndmin=1)
+                    if color.shape[0] != 3 or color.max().round(4) > 1.:
+                        raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
+                    keywords['color'] = tuple(color)
+                    single_color = True
+                else:
+                    keywords[k] = v
 
         plot = mlab.pipeline.iso_surface(grid, **keywords)
     else:
+        single_color = False
+
         if vmin*vmax >= 0: nullvalue = vmin - (vmax-vmin)
         else: nullvalue = 0.
 
@@ -1475,7 +1515,7 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
                         InterpGridSize=interp_size, fill_value=nullvalue)
         keys = ['vmax', 'vmin']
         keywords = dict(figure=fig, vmax=vmax, vmin=vmin)
-        for k, v in zip(kwargs.keys(), kwargs.values()):
+        for k, v in kwargs.items():
             if k in keys: keywords[k] = v
 
         plot = mlab.pipeline.volume(grid, **keywords)
@@ -1501,12 +1541,14 @@ def plot_3Dscalar(fig, base, data, isovalue, volume_3d, interp, interp_size,
         plot._otf = otf
         plot._volume_property.set_scalar_opacity(otf)
 
-    keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
-    keywords = dict(object=plot)
-    for k, v in zip(kwargs.keys(), kwargs.values()):
-        if k in keys: keywords[k] = v
-    mlab.scalarbar(**keywords)
-
+    if single_color == False:
+        keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+        keywords = dict(object=plot)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
+        mlab.scalarbar(**keywords)
+    else: # turn colorbar off
+        plot.module_manager.scalar_lut_manager.show_scalar_bar = False
     return fig
 
 
@@ -1599,9 +1641,17 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
                     colormap='jet',
                     vmax=vmax,
                     vmin=vmin)
-
-    for k, v in zip(kwargs.keys(), kwargs.values()):
-        if k in keys: keywords[k] = v
+    single_color = False
+    for k, v in kwargs.items():
+        if k in keys:
+            if k == 'colormap' and not isinstance(v, str): # color instead of colormap
+                color = np.array(v, dtype=float, ndmin=1)
+                if color.shape[0] != 3 or color.max().round(4) > 1.:
+                    raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
+                keywords['color'] = tuple(color)
+                single_color = True
+            else:
+                keywords[k] = v
 
     surf = mlab.pipeline.surface(grid, **keywords)
 
@@ -1612,17 +1662,116 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
                         contours=levels.tolist(),
                         vmax=vmax,
                         vmin=vmin)
-        for k, v in zip(kwargs.keys(), kwargs.values()):
+        for k, v in kwargs.items():
             if k in keys: keywords[k] = v
 
         lines = mlab.pipeline.contour_surface(grid, **keywords)
 
-    keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
-    keywords = dict(object=surf)
-    for k, v in zip(kwargs.keys(), kwargs.values()):
-        if k in keys: keywords[k] = v
-    mlab.scalarbar(**keywords)
+    if single_color == False:
+        keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+        keywords = dict(object=surf)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
+        mlab.scalarbar(**keywords)
+    else: # turn colorbar off
+        surf.module_manager.scalar_lut_manager.show_scalar_bar = False
+    return fig
 
+
+def plot_3Dvector(fig, base, data, display_range, **kwargs):
+    """
+    Plot 3D vector field defined on a 3D/2D grid.
+
+    Args:
+        fig: MayaVi scence object
+        base (array): (4)3\*3 array of base vectors defining (O, )A, B, C.
+        data (array): (nZ\*)nY\*nX\*3 array of plot data.
+        display_range (array): 3\*2 array defining the displayed region.
+            Fractional coordinates a, b, c are used.
+        \*\*kwargs: Optional keywords passed to MayaVi, listed below.
+        colormap (turple|str): Colormap of quivers. Or a 1\*3 RGB turple from 0 to 1 to define colors.
+        line_width (float): The width of the lines.
+        scale_factor (float): The scaling applied to the arrows
+        vmax (float): Maximum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        vmin (float): Minimum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        title (str): Colorbar title.
+        orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
+        nb_labels (int): The number of labels to display on the colorbar.
+        label_fmt (str): The string formater for the labels, e.g., '%.1f'.
+    Returns:
+        fig: MayaVi scence object
+    """
+    try:
+        from mayavi import mlab
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError('MayaVi is required for this functionality, which is not in the default dependency list of CRYSTALpytools.')
+    #---------------------------------------------------------------------#
+    #                                NOTE                                 #
+    #---------------------------------------------------------------------#
+    # For visualization, data has the dimension of nX*nY*nZ. A transpose  #
+    # is needed!                                                          #
+    #---------------------------------------------------------------------#
+
+    # Input processing and sanity check
+    if data.ndim == 3 and base.shape[0] == 3:
+        grid_dim = 2
+        base = np.vstack([base[1], base[2], base[0]])
+    elif data.ndim == 4 and base.shape[0] == 4:
+        grid_dim = 3
+    else:
+        raise Exception("A (nZ*)nY*nX*3 array is needed for input data and a (4)3*3 array is needed for base vectors.")
+    dataX = data[..., 0].T
+    dataY = data[..., 1].T
+    dataZ = data[..., 2].T
+    dataN = np.linalg.norm(data, axis=-1).T.round(12)
+    del data
+
+    # V range
+    if 'vmin' in kwargs.keys():
+        vmin = np.round(kwargs['vmin'], 12)
+    else:
+        vmin = np.round(np.min(dataN), 12)
+    if 'vmax' in kwargs.keys():
+        vmax = np.round(kwargs['vmax'], 12)
+    else:
+        vmax = np.round(np.max(dataN), 12)
+
+    idx = np.where((dataN<vmin)|(dataN>vmax)); del dataN
+    dataX[idx] = 0.; dataY[idx] = 0.; dataZ[idx] = 0.
+
+    # Expansion
+    newbase, dataX = GridExpand(base, dataX, display_range)
+    _, dataY = GridExpand(base, dataY, display_range)
+    _, dataZ = GridExpand(base, dataZ, display_range)
+
+    # Visualization
+    grid = tvtkGrid(newbase, dataX, dataY=dataY, dataZ=dataZ, CenterOrigin=False, InterpGridSize=None)
+    keys = ['colormap', 'line_width', 'scale_factor', 'vmax', 'vmin', 'mask_points']
+    keywords = dict(figure=fig, colormap='jet', vmax=vmax, vmin=vmin)
+    single_color = False
+    for k, v in kwargs.items():
+        if k in keys:
+            if k == 'colormap' and not isinstance(v, str): # color instead of colormap
+                color = np.array(v, dtype=float, ndmin=1)
+                if color.shape[0] != 3 or color.max().round(4) > 1.:
+                    raise Exception("Input color must be a 1*3 RGB array between 0 and 1.")
+                keywords['color'] = tuple(color)
+                single_color = True
+            else:
+                keywords[k] = v
+
+    plot = mlab.pipeline.vectors(grid, **keywords)
+
+    if single_color == False:
+        keys = ['title', 'orientation', 'nb_labels', 'label_fmt']
+        keywords = dict(object=plot)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
+        mlab.scalarbar(**keywords)
+    else: # turn colorbar off
+        plot.module_manager.scalar_lut_manager.show_scalar_bar = False
     return fig
 
 
@@ -1631,11 +1780,11 @@ def plot_3Dplane(fig, base, data, levels, contour_2d, interp, interp_size,
 
 def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
                     interp, interp_size, grid_display_range, **kwargs):
-    """
-    Visualize 2D or 3D scalar fields with 3D atomic structures.
+    """Visualize 2D or 3D scalar fields with 3D atomic structures.
 
     Args:
-        struc (CStructure): CRYSTALpytools extended structure object.
+        struc (CStructure|None): CRYSTALpytools extended structure object. 'None'
+            for not displaying structure.
         base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
             base vectors BC, BA (2D) or OA, OB, OC (3D). The sequence is (O),
             A, B, C.
@@ -1654,6 +1803,7 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
             region of the data grid. Not used for default TOPOND outputs.
         \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
             Allowed keywords are listed below.
+        fig: MayaVi scence object.
         colormap (turple|str): Colormap of isosurfaces/heatmaps. Or a 1\*3
             RGB turple from 0 to 1 to define colors. *Not for volume_3d=True*.
         opacity (float): Opacity from 0 to 1. For ``volume_3d=True``, that
@@ -1662,8 +1812,10 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
         transparent (bool): Scalar-dependent opacity. *Not for volume_3d=True*.
         color (turple): Color of contour lines. *'contour_2d=True' only*.
         line_width (float): Width of 2D contour lines. *'contour_2d=True' only*.
-        vmax (float): Maximum value of colormap.
-        vmin (float): Minimum value of colormap.
+        vmax (float): Maximum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        vmin (float): Minimum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
         title (str): Colorbar title.
         orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
         nb_labels (int): The number of labels to display on the colorbar.
@@ -1678,7 +1830,6 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
         display_range (array): 3\*2 array defining the displayed region of
             the structure. Fractional coordinates a, b, c are used but only
             the periodic directions are applied.
-        scale (float): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
         special_bonds (dict): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
     Returns:
         fig: MayaVi scence object, if ``show_the_scene=False``.
@@ -1686,17 +1837,16 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
     from CRYSTALpytools.geometry import CStructure
 
     # Input processing and sanity check
-    if not isinstance(struc, CStructure):
+    if not isinstance(struc, CStructure) and struc is not None:
         raise Exception("Geometry information must be saved as the CRYSTALpytools CStructure object.")
 
     if data.ndim != 2 and data.ndim != 3:
         raise Exception('Not a 3D/2D scalar field object.')
 
     if data.ndim != base.shape[0]-1:
-        raise Exception("Inconsistent dimensionalities of data grid and base vector (should be data's + 1). Data {:d}, Base {:d}.".format(
-            data.ndim, base.shape[0]))
+        raise Exception(f"Inconsistent dimensionalities of data grid and base vector (should be data's + 1). Data {data.ndim:d}, Base {base.shape[0]:d}.")
 
-    if np.all(isovalue==None):
+    if isovalue is None:
         isovalue = (np.max(data) + np.min(data)) * 0.5
     isovalue = np.array(isovalue, ndmin=1, dtype=float)
     if isovalue.ndim > 1: raise Exception('Values of isosurfaces must be a 1D array.')
@@ -1717,34 +1867,26 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
     if len(grid_display_range) != data.ndim:
         raise Exception("Grid display range must have the same dimensionality as grid data.")
 
-    if 'display_range' in kwargs.keys():
-        display_range = np.array(kwargs['display_range'], dtype=float)
-    else:
-        display_range = np.array([[0,1], [0,1], [0,1]], dtype=float)
-
-    if np.any(struc.pbc==False):
-        idir = np.where(struc.pbc==False)[0]
-        display_range[idir] = [0., 1.]
-
-    idx = np.where(display_range[:,1]-display_range[:,0]<1e-4)[0]
-    if len(idx) > 0:
-        direct = ['x', 'y', 'z'][idx[0]]
-        raise Exception("Structure display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
-            direct, direct, display_range[idx[0], 0], direct, display_range[idx[0], 1]))
     idx = np.where(grid_display_range[:,1]-grid_display_range[:,0]<1e-4)[0]
     if len(idx) > 0:
         direct = ['x', 'y', 'z'][idx[0]]
-        raise Exception("Grid display range error along {} axis!\n{} min = {:.2f}, {} max = {:.2f}. No data is displayed.".format(
-            direct, direct, grid_display_range[idx[0], 0], direct, grid_display_range[idx[0], 1]))
+        raise Exception(f"Grid display range error along {direct} axis!\n{direct} min = {grid_display_range[idx[0], 0]:.2f}, {direct} max = {grid_display_range[idx[0], 1]:.2f}. No data is displayed.")
 
     # Plot structure
-    keys = ['atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
-            'cell_color', 'cell_linewidth', 'special_bonds']
-    keywords = dict(show_the_scene=False, display_range=display_range)
-    for k, v in zip(kwargs.keys(), kwargs.values()):
-        if k in keys: keywords[k] = v
+    if struc is not None:
+        keys = ['fig', 'atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
+                'cell_color', 'cell_linewidth', 'display_range', 'special_bonds']
+        keywords = dict(show_the_scene=False)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
 
-    fig = struc.visualize(**keywords)
+        fig = struc.visualize(**keywords)
+
+    else:
+        if 'fig' in kwargs.keys():
+            fig = kwargs['fig']
+        else:
+            fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
 
     # Plot data
     keys = ['colormap', 'opacity', 'transparent', 'line_width', 'color',
@@ -1758,7 +1900,7 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
                         interp=interp,
                         interp_size=interp_size,
                         display_range=grid_display_range)
-        for k, v in zip(kwargs.keys(), kwargs.values()):
+        for k, v in kwargs.items():
             if k in keys: keywords[k] = v
 
         fig = plot_3Dscalar(**keywords)
@@ -1771,10 +1913,105 @@ def plot_GeomScalar(struc, base, data, isovalue, volume_3d, contour_2d,
                         interp=interp,
                         interp_size=interp_size,
                         display_range=grid_display_range)
-        for k, v in zip(kwargs.keys(), kwargs.values()):
+        for k, v in kwargs.items():
             if k in keys: keywords[k] = v
 
         fig = plot_3Dplane(**keywords)
+    return fig
+
+
+def plot_GeomVector(struc, base, data, grid_display_range, **kwargs):
+    """Visualize 2D or 3D vector fields with 3D atomic structures. If plotted
+    with scalar fields, this function must be called at the end. Use ``fig``
+    argument to pass MayaVi scence object.
+
+    Args:
+        struc (CStructure|None): CRYSTALpytools extended structure object. 'None'
+            for not displaying structure.
+        base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
+            base vectors BC, BA (2D) or OA, OB, OC (3D). The sequence is (O),
+            A, B, C.
+        data (array): 2D (3D) Plot data. (nZ\*)nY\*nX\*3
+        grid_display_range (array): 3\*2 array defining the displayed region of
+            the data grid.
+        \*\*kwargs: Optional keywords passed to MayaVi or ``CStructure.visualize()``.
+            Allowed keywords are listed below.
+        fig: MayaVi scence object.
+        colormap (turple|str): Colormap of quivers. Or a 1\*3 RGB turple from 0
+            to 1 to define colors.
+        line_width (float): The width of the lines.
+        scale_factor (float): The scaling applied to the arrows
+        vmax (float): Maximum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        vmin (float): Minimum value of colormap (vector norm). Also used to
+            define the range of displayed vectors
+        title (str): Colorbar title.
+        orientation (str): Orientation of colorbar, 'horizontal' or 'vertical'.
+        nb_labels (int): The number of labels to display on the colorbar.
+        label_fmt (str): The string formater for the labels, e.g., '%.1f'.
+        atom_color (str): Color map of atoms. 'jmol' or 'cpk'.
+        bond_color (turple): Color of bonds, in a 1\*3 RGB turple from 0 to 1.
+        atom_bond_ratio (str): 'balls', 'large', 'medium', 'small' or
+            'sticks'. The relative sizes of balls and sticks.
+        cell_display (bool): Display lattice boundaries (at \[0., 0., 0.\] only).
+        cell_color (turple): Color of lattice boundaries, in a 1\*3 RGB turple from 0 to 1.
+        cell_linewidth (float): Linewidth of plotted lattice boundaries.
+        display_range (array): 3\*2 array defining the displayed region of
+            the structure. Fractional coordinates a, b, c are used but only
+            the periodic directions are applied.
+        special_bonds (dict): See :ref:`geometry.CStructure.get_bonds() <ref-CStrucGetBonds>`.
+    Returns:
+        fig: MayaVi scence object.
+    """
+    from CRYSTALpytools.geometry import CStructure
+
+    # Input processing and sanity check
+    if not isinstance(struc, CStructure) and struc is not None:
+        raise Exception("Geometry information must be saved as the CRYSTALpytools CStructure object.")
+
+    if data.ndim != 3 and data.ndim != 4:
+        raise Exception('Not a 3D/2D vector field object.')
+
+    if data.ndim != base.shape[0]:
+        raise Exception(f"Inconsistent dimensionalities of data grid and base vector (should be the same as data's). Data {data.ndim:d}, Base {base.shape[0]:d}.")
+
+    # Expansion, check periodicity
+    grid_display_range = np.array(grid_display_range, dtype=float)
+    if data.ndim == 3 and len(grid_display_range) > 2:
+        if grid_display_range[2, 0] != 0 or grid_display_range[2, 1] != 1:
+            warn("For 2D data grid, a 2x2 display range should be defined. Using the first two elements.", stacklevel=2)
+        grid_display_range = grid_display_range[0:2]
+    if len(grid_display_range) != data.ndim-1:
+        raise Exception("Grid display range must have 'grid data-1' dimensionality.")
+
+    idx = np.where(grid_display_range[:,1]-grid_display_range[:,0]<1e-4)[0]
+    if len(idx) > 0:
+        direct = ['x', 'y', 'z'][idx[0]]
+        raise Exception(f"Grid display range error along {direct} axis!\n{direct} min = {grid_display_range[idx[0], 0]:.2f}, {direct} max = {grid_display_range[idx[0], 1]:.2f}. No data is displayed.")
+
+    # Plot structure
+    if struc is not None:
+        keys = ['fig', 'atom_color', 'bond_color', 'atom_bond_ratio', 'cell_display',
+                'cell_color', 'cell_linewidth', 'display_range', 'special_bonds']
+        keywords = dict(show_the_scene=False)
+        for k, v in kwargs.items():
+            if k in keys: keywords[k] = v
+
+        fig = struc.visualize(**keywords)
+    else:
+        if 'fig' in kwargs.keys():
+            fig = kwargs['fig']
+        else:
+            fig = mlab.figure(bgcolor=(1, 1, 1), fgcolor=(0, 0, 0))
+
+    # Plot data
+    keys = ['colormap', 'line_width', 'scale_factor', 'mask_points', 'vmax', 'vmin',
+            'title', 'orientation', 'nb_labels', 'label_fmt']
+    keywords = dict(fig=fig, base=base, data=data, display_range=grid_display_range)
+    for k, v in kwargs.items():
+        if k in keys: keywords[k] = v
+
+    fig = plot_3Dvector(**keywords)
     return fig
 
 #-----------------------------------------------------------------------------#
