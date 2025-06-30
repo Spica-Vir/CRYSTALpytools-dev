@@ -4,7 +4,7 @@
 Base object of all the input (d12/d3) blocks.
 """
 import numpy as np
-
+from warnings import warn
 
 class BlockBASE():
     """
@@ -13,16 +13,19 @@ class BlockBASE():
     Args:
         bg (str): Beginning line. Keyword or title
         ed (str): Ending line.
+        sep (str): Separator between keyword and value pairs.
+        line_ed (str): Line ending.
         dic (dict): Keyword and value (in text) pairs. Format is listed below.
 
     Returns:
         self (BlockBASE): New attributes listed below
         self._block_bg (str): Keyword of the block
-        self._block_ed (str): End of block indicator, 'END'
-        self._block_data (str) : Formatted text string for d12.
-        self._block_dict (dict): Keyword and value (in text) pairs. Key: CRYSTAL
+        self._block_ed (str): End of block indicator
+        self._separator (str): Separator between keyword and value pairs.
+        self._block_data (str) : Formatted text string for input file.
+        self._block_dict (dict): Keyword and value (in text) pairs. Key: Input
             keyword in string. Value: A 3\*1 or 4\*1 list, see below.
-            * 1st element: For keywords: String, formatted output; ``None``, not including the keyword; ``''``, keyword only
+            * 1st element: For keywords: String, formatted output; 'None', not including the keyword; '', keyword only
             * 1st element: For subblocks: Name of the 'real' attribute (protected by property decorator)
             * 2nd: bool, whether it is a sub-block or not;
             * 3rd: A list of conflicting keywords.
@@ -31,11 +34,13 @@ class BlockBASE():
         self._block_valid (bool): Whether this block is valid and for print.
     """
 
-    def __init__(self, bg, ed, dic):
-        from CRYSTALpytools.base import crysd12, propd3
+    def __init__(self, bg, ed, sep, line_ed, dic):
+        from CRYSTALpytools import io
 
         self._block_bg = bg # Title or keyword of the block
         self._block_ed = ed # End of block indicator
+        self._separator = sep # Separator between keyword and value pairs.
+        self._line_ending = line_ed # Line ending indicator.
         self._block_data = '' # Formatted text string
         self._block_dict = dic # Data
         self._block_valid = True # Whether this block is valid and for print
@@ -51,26 +56,20 @@ class BlockBASE():
     def __call__(self, obj=''):
         if type(obj) == str:
             self.__init__()
-            if np.all(obj!=''):
-                self.analyze_text(obj)
-        elif np.all(obj==None):
+            if obj != '': self.analyze_text(obj)
+        elif obj is None:
             self.__init__()
             self._block_valid = False
         elif type(obj) == type(self):
             self = obj
         else:
-            raise ValueError('Unknown data type.')
+            raise Exception('Unknown data type.')
 
     @property
     def data(self):
-        """
-        Settings in all the attributes are summarized here.
-        """
-        import warnings
-
+        """Settings in all the attributes are summarized here."""
         if self._block_valid == False:
-            warnings.warn("This block is not visible. Set 'self._block_valid = True' to get data",
-                          stacklevel=2)
+            warn("This block is not visible. Set 'self._block_valid = True' to get data", stacklevel=2)
             return ''
 
         self.update_block()
@@ -86,103 +85,95 @@ class BlockBASE():
         Args:
             shape (list[int]): 1D list. Shape of input text. Length: Number of
                 lines; Element: Number of values
-            value (list | str): List, a 1D list of arguments; ``''`` or a list
-                begins with ``''``, return to ``''``; ``None`` or a list
-                begins with ``None``, return ``None``.
-
+            value (list | str): List, a 1D list of arguments; '' or a list
+                begins with '', return to ''; 'None' or a list begins with
+                'None', return 'None'.
         Returns:
-            text (str): CRYSTAL input
+            text (str): Formatted input
         """
         # Check the validity of key
-        if key not in self._block_key:
-            raise ValueError("Cannot recognize keyword '{}'.".format(key))
+        if key not in self._block_key: raise Exception(f"Unknown keyword '{key}'.")
 
         self.clean_conflict(key)
 
+        if type(value) == np.ndarray: value = value.tolist()
         if type(value) != list and type(value) != tuple:
             value = [value, ]
 
         # Keyword only or cleanup: Value is '' or None
-        if np.all(value[0]=='') or np.all(value[0]==None):
+        if value[0]=='' or value[0] is None:
             self._block_dict[key][0] = value[0]
             return self
 
         # Wrong input: Number of args defined by shape != input.
         if sum(shape) != len(value):
-            raise ValueError(
-                "Value does not meet requirement of keyword '{}'.".format(key))
+            raise Exception(f"Inconsistent shapes and values for keyword '{key}'.")
 
         # Correct number of args
         text = ''
         value_counter = 0
-        for nvalue in shape:
-            for v in value[value_counter:value_counter + nvalue]:
-                text += '{} '.format(v)
-            text += '\n'
-            value_counter += nvalue
-
+        try:
+            for nvalue in shape:
+                text += ' '.join([str(v) for v in value[value_counter:value_counter + nvalue]]) + self._line_ending
+                value_counter += nvalue
+        except IndexError:
+            raise Exception("The shape of input data does not satisfy requirements.")
         self._block_dict[key][0] = text
         return self
 
     @staticmethod
     def set_matrix(mx):
-        """
-        Set matrix-like data to get assign_keyword inputs. Used for supercell 
-        expansion matrix and strain tensor.
+        """Set matrix-like data to get ``assign_keyword()`` inputs. 'Matrix-like'
+        means having the same number of rows and cols and having no shape indicator.
 
         Args:
-            mx (list | str): ``ndimen*ndimen`` list, ``None``, or ``''``
-
+            mx (list | str): nDimen\*nDimen list, 'None', or ''
         Returns:
-            shape (list): ``ndimen*1`` 1D list. All elements are ndimen.
-            value (list): ``ndimen*2*1`` 1D list. Flattened matrix.
+            shape (list): 1\*nDimen 1D list. All elements are nDimen.
+            value (list): 1\*nDimen^2 1D list. Flattened matrix.
         """
-        if np.all(mx==None):  # Clean data
+        if type(mx) == np.ndarray: mx = mx.tolist()
+
+        if mx is None:  # Clean data
             return [], None
-        elif np.all(mx==''):  # Keyword only
+        elif mx == '':  # Keyword only
             return [], ''
 
-        matrix = np.array(mx)
-        if matrix.shape[0] != matrix.shape[1]:
-            raise ValueError("Input matrix is not a square matrix.")
-
-        shape = [matrix.shape[0] for i in range(matrix.shape[0])]
-        value = matrix.reshape([1, -1]).tolist()[0]
-
+        shape = []; value = []
+        for row in mx:
+            if len(mx) != len(row): raise ValueError("Input matrix is not a square matrix.")
+            shape.append(len(row))
+            value.extend(row)
         return shape, value
 
     @staticmethod
     def set_list(*args):
         """
-        Set list-like data to get assign_keyword inputs. Used for lists with
-        known dimensions. Such as atom coordinate list.
+        Set list-like data to get ``assign_keyword()`` inputs. Used for lists with
+        known dimensions.
 
         Args:
-            \*args : ``''``, Clean data; ``None``, Return keyword only; 
-                ``int, list``, int for length of the list, list for list data
+            \*args : '', Clean data; 'None', Return keyword only; 
+                int, list, int for length of the list, list for list data
         Returns:
-            shape (list): 1 + length 1D list or []
-            args (list): Flattened list, [] or ''
+            shape (list): 1 + length 1D list, first element is 1, and the rest
+                is the number of elements for each line. Or [].
+            args (list): Flattened list, the first element is number of lines. Or [] or ''
         """
-        if np.all(args[0]==None):  # Clean data
+        if args[0] is None:  # Clean data
             return [], None
-        elif np.all(args[0]==''):  # Keyword only
+        elif args[0] == '':  # Keyword only
             return [], ''
 
         if len(args) != 2 or int(args[0]) != len(args[1]):
             return ValueError('Input format error. Arguments should be int + list')
+        if type(args[1]) == np.ndarray:
+            args[1] = args[1].tolist()
 
-        shape = [1, ]
-        value = [int(args[0]), ]
-
-        if type(args[1][0]) == list or type(args[1][0]) == tuple:  # 2D list (multi-rows)
-            for i in args[1]:
-                shape += [len(i), ]
-                value += i
-        else:  # 1D list (single row)
-            shape += [len(args[1]), ]
-            value += args[1]
-
+        shape = [1, ]; value = [int(args[0]), ]
+        for i in args[1]:
+            shape.append(len(i))
+            value.extend(i)
         return shape, value
 
     def clean_conflict(self, key):
@@ -192,25 +183,24 @@ class BlockBASE():
         Args:
             key (str): The keyword specified.
         """
-        import warnings
         for cttr in self._block_dict[key][2]:
             cttr = cttr.upper()
             if cttr == key:
                 continue
-
-            if self._block_dict[cttr][1] == False: # keyword
-                if np.all(self._block_dict[cttr][0]!=None):
-                    warnings.warn("'{}' conflicts with the existing '{}'. The old one is deleted.".format(key, cttr),
-                                  stacklevel=3)
-                    self._block_dict[cttr][0] = None
-            else: # subblock
-                obj = getattr(self, self._block_dict[cttr][0])
-                if obj._block_valid == True:
-                    warnings.warn("'{}' conflicts with the existing '{}'. The old one is deleted.".format(key, cttr),
-                                  stacklevel=3)
-                    obj(None)
-                    setattr(self, self._block_dict[cttr][0], obj)
-
+            try:
+                if self._block_dict[cttr][1] == False: # keyword
+                    if self._block_dict[cttr][0] is not None:
+                        warn(f"'{key}' conflicts with the existing '{cttr}'. The old one is deleted.", stacklevel=3)
+                        self._block_dict[cttr][0] = None
+                else: # subblock
+                    obj = getattr(self, self._block_dict[cttr][0])
+                    if obj._block_valid == True:
+                        warn(f"'{key}' conflicts with the existing '{cttr}'. The old one is deleted.", stacklevel=3)
+                        obj(None)
+                        setattr(self, self._block_dict[cttr][0], obj)
+            except KeyError:
+                warn(f"The specified keyword '{cttr}' is not defined. Ignored for conflict check.", stacklevel=3)
+                continue
         return self
 
     def update_block(self):
@@ -221,8 +211,8 @@ class BlockBASE():
         self._block_data = ''
         for key in self._block_key:
             if self._block_dict[key][1] == False: # Keyword-like attributes
-                if np.all(self._block_dict[key][0]!=None):
-                    self._block_data += key + '\n' + self._block_dict[key][0]
+                if self._block_dict[key][0] is not None:
+                    self._block_data += f"{key}{self._separator}{self._block_dict[key][0]}"
             else: # Block-like attributes, get data from the corresponding attribute
                 # It is important to use real attribute here for subblocks
                 # To avoid automatically setting objreal._block_valid == True
@@ -236,53 +226,68 @@ class BlockBASE():
                     setattr(self, self._block_dict[key][0], obj)
         return self
 
-    def analyze_text(self, text):
+    def analyze_text(self, text, bg_block_label=None, end_block_label=None):
         """
         Analyze the input text and return to corresponding attributes
+
+        Args:
+            text (str):
+            bg_block_label (str): Marks the begin of the block. 'None' to use 'self._block_bg'.
+                '' to use first / last lines.
+            end_block_label (str): Marks the end of the block. 'None' to use 'self._block_ed'.
+                '' to use first / last lines.
         """
-        import warnings
-        from CRYSTALpytools.base import crysd12, propd3
+        separator = self._separator
+        ending = self._line_ending
+        textline = text.strip().split(ending)
+        allcapkeys = np.array([k.upper() for k in self._block_key])
 
-        if np.all(self._block_ed==None):
-            end_block_label = ''
-        else:
-            end_block_label = 'END'
+        # Range of the block
+        if bg_block_label is None: bg_block_label = self._block_bg.strip(ending)
+        if end_block_label is None: end_block_label = self._block_ed.strip(ending)
 
-        textline = text.strip().split('\n')
-        attr = ''
-        attr_real = ''
+        line_bg = -1;
+        if bg_block_label != '':
+            for iline, line in enumerate(textline):
+                if bg_block_label.upper() in line.upper():
+                    line_bg = iline; break
+
+        line_ed = len(textline)+1
+        if end_block_label != '':
+            for iline, line in enumerate(textline[::-1]):
+                if end_block_label.upper() in line.upper():
+                    line_ed = len(textline)-iline; break
+
+        # Data in the block
         value = ''
-        for idx, t in enumerate(textline[::-1]):
-            if t.upper() in self._block_key:  # Keyword line: ending point
-                t = t.upper()
-                if self._block_dict[t][1] == False: # Keyword-like attributes
-                    if np.all(self._block_dict[t][0]!=None):
-                        warnings.warn("Keyword '{}' exists. The new entry will cover the old one".format(t),
-                                      stacklevel=2)
-                    self._block_dict[t][0] = value
+        for iline, t in enumerate(textline[line_bg+1:line_ed-1][::-1]):
+            line = t.strip().split(separator)
+            guess = line[0].upper()
+            iguess = np.where(allcapkeys==guess)[0]
+            if len(iguess) > 0: # Keyword line: ending point of saved values
+                key = self._block_key[iguess[0]]
+                inline = f'{separator}'.join(line[1:]) ## When keyword and value in the same line
+                if inline != '': inline += ending
+                value =  inline + value
+                if self._block_dict[key][1] == False: # Keyword-like attributes
+                    if self._block_dict[key][0] is not None:
+                        warn(f"Keyword '{key}' exists. The new entry will cover the old one", stacklevel=2)
+                    self._block_dict[key][0] = value
                 else:  # Block-like attributes
-                    obj = getattr(self, self._block_dict[t][0])
+                    obj = getattr(self, self._block_dict[key][0])
                     if obj._block_valid == True:
-                        warnings.warn("Keyword '{}' exists. The new entry will cover the old one".format(t),
-                                      stacklevel=2)
-                    # Update obj
+                        warn(f"Keyword '{key}' exists. The new entry will cover the old one", stacklevel=2)
                     obj(value)
-                    setattr(self, self._block_dict[t][0], obj)
-                # Clean values
+                    setattr(self, self._block_dict[key][0], obj)
+
+                # Clean saved values
                 value = ''
-            elif end_block_label in t.upper(): # End line: starting point
-                continue
-            else:
-                value = t + '\n' + value
-        # Last lines if unallocated string exists
+            else: # No keyword line
+                value = t + ending + value
+
+        # Last lines if unallocated string exists,  saved into beginning lines
         if np.all(value!=''):
-            if self._block_bg == value: # for subblocks
-                pass
-            else: # saved into beginning lines
-                textline = value.strip().split('\n')
-                for t in textline:
-                    if self._block_bg == t + '\n':
-                        pass
-                    else:
-                        self._block_bg = self._block_bg + t + '\n'
+            textline = value.strip().split(ending)
+            for t in textline:
+                self._block_bg = self._block_bg + t + ending
         return self
