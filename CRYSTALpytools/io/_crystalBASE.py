@@ -742,38 +742,85 @@ class Optgeom(BlockBASE):
         ed = 'ENDOPT\n'
         # The sequence of keywords should follow rules in the manual
         # Read inputbase.py for the definition of dict values
-        opttype = ['FULLOPTG', 'CELLONLY', 'INTREDUN', 'ITATOCEL', 'CVOLOPT']
-        hess = ['HESSIDEN', 'HESSMOD1', 'HESSMOD2', 'HESSNUM']
+        opttype = ['FULLOPTG', 'ATOMONLY', 'CELLONLY', 'ITATOCEL', 'INTREDUN', 'INTLMIXED']
+        hess = ['HESSIDEN', 'HESSMOD1', 'HESSMOD2', 'HESSNUM', 'HESSOPT']
         dic = {
+            'RESTART'     : [None, False, []],
+            # ---- Ooptimization type ----
             'FULLOPTG'    : [None, False, opttype],
-            'FULLOPTG'    : [None, False, opttype],
+            'ATOMONLY'    : [None, False, opttype],
             'CELLONLY'    : [None, False, opttype],
-            'INTREDUN'    : [None, False, opttype],
             'ITATOCEL'    : [None, False, opttype],
-            'CVOLOPT'     : [None, False, opttype],
+            'INTREDUN'    : [None, False, opttype],
+            'INTLMIXED'     [None, False, opttype],
+            # ---- hessian ----
             'HESSIDEN'    : [None, False, hess],
             'HESSMOD1'    : [None, False, hess],
             'HESSMOD2'    : [None, False, hess],
+            'HESSOPT'     : [None, False, hess],
             'HESSNUM'     : [None, False, hess],
+            # ---- atomic radii ----
+            'COVRAD'      : [None, False, ['IONRAD']],
+            'IONRAD'      : [None, False, ['COVRAD']],
+            # ---- updating ----
+            'BFGS'        : [None, False, ['BFGS', 'OLDCG', 'BERNY', 'POWELL']],
+            'OLDCG'       : [None, False, ['BFGS', 'OLDCG', 'BERNY', 'POWELL']],
+            'BERNY'       : [None, False, ['BFGS', 'OLDCG', 'BERNY', 'POWELL']],
+            'POWELL'      : [None, False, ['BFGS', 'OLDCG', 'BERNY', 'POWELL']],
+            # ---- convergence ----
             'TOLDEG'      : [None, False, []],
             'TOLDEX'      : [None, False, []],
             'TOLDEE'      : [None, False, []],
-            'MAXCYCLE'    : [None, False, []],
-            'FRAGMENT'    : [None, False, []],
-            'RESTART'     : [None, False, []],
-            'FINALRUN'    : [None, False, []],
-            'EXTPRESS'    : [None, False, []],
             'ALLOWTRUSTR' : [None, False, ['NOTRUSTR',]],
             'NOTRUSTR'    : [None, False, ['ALLOWTRUSTR', 'MAXTRADIUS', 'TRUSTRADIUS']],
             'MAXTRADIUS'  : [None, False, ['NOTRUSTR',]],
             'TRUSTRADIUS' : [None, False, ['NOTRUSTR',]],
-            'ONELOG'      : [None, False, []],
-            'NOXYZ'       : [None, False, []],
-            'NOSYMMOPS'   : [None, False, []],
-            'PRINTFORCES' : [None, False, []],
-            'PRINTHESS'   : [None, False, []],
-            'PRINTOPT'    : [None, False, []],
-            'PRINT'       : [None, False, []],
+            # ---- coordinates ----
+            # 'FRACTION'
+            # 'FRACTIOO'
+            # 'FRACTCOOR'
+            # 'RENOSAED'
+            # ---- opt control ----
+            'EXPDE'       : [None, False, []],
+            'FINALRUN'    : [None, False, []],
+            'FIXDELTE'    : [None, False, []],
+            'FIXDELTX'    : [None, False, []],
+            'FIXDEIND'    : [None, False, []],
+            'FITDEGR'     : [None, False, []],
+            'HESEVLIM'    : [None, False, []],
+            'ITACCONV'    : [None, False, []],
+            'MAXITCAE'    : [None, False, []],
+            'MAXCYCLE'    : [None, False, []],
+            'NOGUESS'     : [None, False, []],
+            'NRSTEPS'     : [None, False, []],
+            'SORT'        : [None, False, []],
+            # ---- grad control ----
+            'NUMGRATO'    : [None, False, []],
+            'NUMGRCEL'    : [None, False, []],
+            'NUMGRALL'    : [None, False, []],
+            # ---- interal coords ----
+            # 'ANGTODOUBLE'
+            # 'DBANGLIST'
+            # 'DEFLNGS'
+            # 'DEFANGLS'
+            # 'BKTRNSF2'
+            # 'WGHTDREDU'
+            # 'MODINTCOOR'
+            # 'FIXCELL'
+            # 'STEPBMAT'
+            # 'TESTREDU'
+            # 'TOLREDU'
+            # ---- constrains ----
+            'CVOLOPT'     : [None, False, ['ATOMONLY', 'ITATOCEL', 'INTLMIXED']],
+            # 'CRYDEF'
+            # 'FIXDEF'
+            # 'FIXCOOR'
+            'FRAGMENT'    : [None, False, []],
+            # 'LNGSFROZEN'
+            # 'ANGSFROZEN'
+            # 'FREEZINT'
+            # 'FREEZDIH'
+            'EXTPRESS'    : [None, False, []],
             # ---- transition states ----
             'TSOPT'       : [None, False, []],
             'MODEFOLLOW'  : [None, False, []],
@@ -782,25 +829,43 @@ class Optgeom(BlockBASE):
             'CHNGTSFOL'   : [None, False, []],
             'SCANATOM'    : [None, False, []],
             'SCANREDU'    : [None, False, []],
+            # ---- print ----
+            'ONELOG'      : [None, False, []],
+            'NOXYZ'       : [None, False, []],
+            'NOSYMMOPS'   : [None, False, []],
+            'PRINTFORCES' : [None, False, []],
+            'PRINTHESS'   : [None, False, []],
+            'PRINTOPT'    : [None, False, []],
+            'PRINT'       : [None, False, []],
         }
         super().__init__(bg, ed, '\n', '\n', dic)
 
     # __call__ method inherited from BlockBASE
 
+    def restart(self, restart=''):
+        super().assign_keyword('RESTART', [], restart); return self
+
+    # ---- optimization type ----
+
     def fulloptg(self, fulloptg=''):
         super().assign_keyword('FULLOPTG', [], fulloptg); return self
+
+    def atomonly(self, atomonly=''):
+        super().assign_keyword('ATOMONLY', [], atomonly); return self
 
     def cellonly(self, cellonly=''):
         super().assign_keyword('CELLONLY', [], cellonly); return self
 
-    def intredun(self, intredun=''):
-        super().assign_keyword('INTREDUN', [], intredun); return self
-
     def itatocel(self, itatocel=''):
         super().assign_keyword('ITATOCEL', [], itatocel); return self
 
-    def cvolopt(self, cvolopt=''):
-        super().assign_keyword('CVOLOPT', [], cvolopt); return self
+    def intredun(self, intredun=''):
+        super().assign_keyword('INTREDUN', [], intredun); return self
+
+    def intlmixed(self, intlmixed=''):
+        super().assign_keyword('INTLMIXED', [], intlmixed); return self
+
+    # ---- hessian ----
 
     def hessiden(self, hessiden=''):
         super().assign_keyword('HESSIDEN', [], hessiden); return self
@@ -811,8 +876,35 @@ class Optgeom(BlockBASE):
     def hessmod2(self, hessmod2=''):
         super().assign_keyword('HESSMOD2', [], hessmod2); return self
 
+    def hessopt(self, hessopt=''):
+        super().assign_keyword('HESSOPT', [], hessopt); return self
+
     def hessnum(self, hessnum=''):
         super().assign_keyword('HESSNUM', [], hessnum); return self
+
+    # ---- atomic radii ----
+
+    def covrad(self, covrad=''):
+        super().assign_keyword('COVRAD', [], covrad); return self
+
+    def ionrad(self, ionrad=''):
+        super().assign_keyword('IONRAD', [], ionrad); return self
+
+    # ---- updating ----
+
+    def bfgs(self, bfgs=''):
+        super().assign_keyword('BFGS', [], bfgs); return self
+
+    def oldcg(self, oldcg=''):
+        super().assign_keyword('OLDCG', [], oldcg); return self
+
+    def berny(self, berny=''):
+        super().assign_keyword('BERNY', [], berny); return self
+
+    def powell(self, powell=''):
+        super().assign_keyword('POWELL', [], powell); return self
+
+    # ---- convergence ----
 
     def toldeg(self, TG=0.0003):
         super().assign_keyword('TOLDEG', [1,], TG); return self
@@ -822,27 +914,6 @@ class Optgeom(BlockBASE):
 
     def toldee(self, IG=7):
         super().assign_keyword('TOLDEE', [1,], IG); return self
-
-    def maxcycle(self, MAX=50):
-        super().assign_keyword('MAXCYCLE', [1,], MAX); return self
-
-    def fragment(self, NL='', LB=[]):
-        """
-        Args:
-            NL (int | str): Number of atoms. See manual
-            LB (list[int]): Label of atoms. See manual
-        """
-        shape, value = super().set_list(NL, LB)
-        super().assign_keyword('FRAGMENT', shape, value); return self
-
-    def restart(self, restart=''):
-        super().assign_keyword('RESTART', [], restart); return self
-
-    def finalrun(self, ICODE=4):
-        super().assign_keyword('FINALRUN', [1,], ICODE); return self
-
-    def extpress(self, pres=''):
-        super().assign_keyword('EXTPRESS', [1,], pres); return self
 
     def allowtrustr(self, allowtrustr=''):
         super().assign_keyword('ALLOWTRUSTR', [], allowtrustr); return self
@@ -856,26 +927,74 @@ class Optgeom(BlockBASE):
     def trustradius(self, TRADIUS=0.5):
         super().assign_keyword('TRUSTRADIUS', [1,], TRADIUS); return self
 
-    def onelog(self, onelog=''):
-        super().assign_keyword('ONELOG', [], onelog); return self
+    # ---- opt control ----
 
-    def noxyz(self, noxyz=''):
-        super().assign_keyword('NOXYZ', [], noxyz); return self
+    def expde(self, DE=0.001):
+        super().assign_keyword('EXPDE', [1,], DE); return self
 
-    def nosymmops(self, nosymmops=''):
-        super().assign_keyword('NOSYMMOPS', [], nosymmops); return self
+    def finalrun(self, ICODE=4):
+        super().assign_keyword('FINALRUN', [1,], ICODE); return self
 
-    def printforces(self, printforces=''):
-        super().assign_keyword('PRINTFORCES', [], printforces); return self
+    def fixdelte(self, IE=-1000):
+        super().assign_keyword('FIXDELTE', [1,], IE); return self
 
-    def printhess(self, printhess=''):
-        super().assign_keyword('PRINTHESS', [], printhess); return self
+    def fixdeltx(self, DX=-1):
+        super().assign_keyword('FIXDELTX', [1,], DX); return self
 
-    def printopt(self, printopt=''):
-        super().assign_keyword('PRINTOPT', [], printopt); return self
+    def fixdeind(self, fixdeind=''):
+        super().assign_keyword('FIXDEIND', [], fixdeind); return self
 
-    def print(self, prt=''):
-        super().assign_keyword('PRINT', [], prt); return self
+    def fitdegr(self, N=2):
+        super().assign_keyword('FITDEGR', [1,], N); return self
+
+    def hesevlim(self, vrange=[0.001,1000]):
+        super().assign_keyword('HESEVLIM', [2,], vrange); return self
+
+    def itacconv(self, DE=1e-8):
+        super().assign_keyword('ITACCONV', [1,], DE); return self
+
+    def maxitace(self, MAXI=100):
+        super().assign_keyword('MAXITACE', [1,], MAXI); return self
+
+    def maxcycle(self, MAX=100):
+        super().assign_keyword('MAXCYCLE', [1,], MAX); return self
+
+    def noguess(self, noguess=''):
+        super().assign_keyword('NOGUESS', [], noguess); return self
+
+    def nrsteps(self, DE=''):
+        super().assign_keyword('NRSTEPS', [1,], DE); return self
+
+    def sort(self, sort=''):
+        super().assign_keyword('SORT', [], sort); return self
+
+    # ---- grad control ----
+
+    def numgrall(self, numgrall=''):
+        super().assign_keyword('NUMGRALL', [], numgrall); return self
+
+    def numgrato(self, numgrato=''):
+        super().assign_keyword('NUMGRATO', [], numgrato); return self
+
+    def numgrcel(self, numgrcel=''):
+        super().assign_keyword('NUMGRCEL', [], numgrcel); return self
+
+    # ---- constrains ----
+
+    def cvolopt(self, cvolopt=''):
+        super().assign_keyword('CVOLOPT', [], cvolopt); return self
+
+    def fragment(self, NL='', LB=[]):
+        """
+        Args:
+            NL (int | str): Number of atoms. See manual
+            LB (list[int]): Label of atoms. See manual
+        """
+        shape, value = super().set_list(NL, LB)
+        super().assign_keyword('FRAGMENT', shape, value); return self
+
+    def extpress(self, pres=''):
+        super().assign_keyword('EXTPRESS', [1,], pres); return self
 
     # ---- transition states ----
 
@@ -899,6 +1018,29 @@ class Optgeom(BlockBASE):
 
     def scanredu(self, IREDSCA='', ENDSCA='', MAXSCA=''):
         super().assign_keyword('SCANREDU', [3,], [IREDSCA, ENDSCA, MAXSCA]); return self
+
+    # ---- print ----
+
+    def onelog(self, onelog=''):
+        super().assign_keyword('ONELOG', [], onelog); return self
+
+    def noxyz(self, noxyz=''):
+        super().assign_keyword('NOXYZ', [], noxyz); return self
+
+    def nosymmops(self, nosymmops=''):
+        super().assign_keyword('NOSYMMOPS', [], nosymmops); return self
+
+    def printforces(self, printforces=''):
+        super().assign_keyword('PRINTFORCES', [], printforces); return self
+
+    def printhess(self, printhess=''):
+        super().assign_keyword('PRINTHESS', [], printhess); return self
+
+    def printopt(self, printopt=''):
+        super().assign_keyword('PRINTOPT', [], printopt); return self
+
+    def print(self, prt=''):
+        super().assign_keyword('PRINT', [], prt); return self
 
 
 class Freqcalc(BlockBASE):
