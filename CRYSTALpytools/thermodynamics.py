@@ -391,7 +391,11 @@ class Harmonic():
 
         Args:
             q (int|array): Indices of q point, from 0.
+                q is either the flattened array specified for every mode,
+                or an integer applied to all modes.
             m (int|array): Indices of mode, from 0.
+                m is either the flattened array specified for every q point,
+                or an integer applied to all q points.
             \*\*kwargs: See below.
             temperature (array|float): If not present, use ``self.temperature``. It will not update the attribute.
             pressure (array|float): If not present, use ``self.pressure``. It will not update the attribute.
@@ -403,16 +407,21 @@ class Harmonic():
             helmholtz (array): 1\*nTemperture, excluding DFT total energy of the system
             gibbs (array): nPressure\*nTemperture, excluding DFT total energy of the system
         """
-        if 'temperature' in kwargs: T = kwargs['temperature']
+        if 'temperature' in kwargs: T = np.array(kwargs['temperature'], ndmin=1)
         else: T = self.temperature
-        if 'pressure' in kwargs: p = kwargs['pressure']
+        if 'pressure' in kwargs: p = np.array(kwargs['pressure'], ndmin=1)
         else: p = self.pressure
-
-        if len(T)==0 or len(p)==0:
-            raise Exception('Temperature and pressure should be specified.')
 
         q = np.array(q, dtype=int, ndmin=1)
         m = np.array(m, dtype=int, ndmin=1)
+
+        if len(T)==0 or len(p)==0:
+            raise Exception('Temperature and pressure should be specified.')
+        if len(q)!=len(m):
+            if len(q) == 1: q = q.repeat(len(m))
+            elif len(m) == 1: m = m.repeat(len(q))
+            else: raise Exception('Inconsistent shapes of q point and mode indices.')
+
         nT = T.shape[0]; npress = p.shape[0]
         wt = self.qpoint[:, 3] / np.sum(self.qpoint[:, 3])
 
@@ -422,19 +431,26 @@ class Harmonic():
         c_v = np.zeros([nT, ], dtype=float)
         it = np.where(T>1e-4)[0]
         tempt = T[it]
-        kBT = molk * tempt * 1e-3 # kJ/mol
-        for iqpt, wqpt in zip(q, wt[q]):
-            freq = self.frequency[iqpt, m]
-            freq = freq[np.where(freq>1e-4)[0]]
-            hbar_freq = freq * molh * 1e9 # kJ/mol
-            zp_energy += 0.5 * np.sum(hbar_freq) * wqpt
+        freq = self.frequency[q, m]
+        ifreq = np.where(freq>1e-4)
+        freq = freq[ifreq]
 
-            hbar_freq = np.repeat(hbar_freq[:, np.newaxis], tempt.shape[0], axis=1) # nMode * nT
-            beta = hbar_freq / kBT
-            exp = np.exp(beta)
-            u_vib[it] += np.sum(hbar_freq / (exp - 1), axis=0) * wqpt
-            entropy[it] += np.sum(molk * (beta/(1-1/exp) - np.log(exp-1)), axis=0) * wqpt
-            c_v[it] += np.sum(beta**2 * molk / (exp - 2 + 1/exp), axis=0) * wqpt
+        kBT = molk * tempt * 1e-3 # kJ/mol
+        wqpt = wt[q][ifreq]
+        hbar_freq = freq * molh * 1e9 # kJ/mol
+        zp_energy += 0.5 * (hbar_freq * wqpt).sum()
+
+        # 0K or translational modes, u_vib = zp_energy, others are 0
+        if len(freq)==0 or len(tempt)==0:
+            return zp_energy, zp_energy, entropy, c_v, \
+                   np.zeros([nT, ], dtype=float), np.zeros([nT, ], dtype=float)
+
+        hbar_freq = np.repeat(hbar_freq[:, np.newaxis], tempt.shape[0], axis=1) # nMode * nT
+        beta = hbar_freq / kBT
+        exp = np.exp(beta)
+        u_vib[it] = wqpt @ (hbar_freq/(exp - 1))
+        entropy[it] = molk * wqpt @ (beta/(1-1/exp) - np.log(exp-1))
+        c_v[it] = molk * wqpt @ (beta**2 / (exp - 2 + 1/exp))
 
         u_vib += zp_energy
         helmholtz = -entropy * T * 1e-3 + u_vib
