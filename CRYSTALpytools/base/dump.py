@@ -27,6 +27,9 @@ def _out_rep(dumper, value):
 # Thermodynamics, HA
 class ThermoHA():
     """Harmonic lattice dynamics I/O."""
+    # HA fitted properties
+    __fit_prop = ['temperature', 'pressure', 'zp_energy', 'u_vib', 'entropy',
+                  'c_v', 'helmholtz', 'gibbs']
     @classmethod
     def write(cls, ha):
         """
@@ -206,9 +209,7 @@ class ThermoHA():
         ha.from_frequency(edft, qpoint, freq, eigvt, symm, structure=struc)
 
         # thermodynamics
-        properties = ['temperature', 'pressure',
-                      'zp_energy', 'u_vib', 'entropy', 'c_v', 'helmholtz', 'gibbs']
-        for p in properties:
+        for p in ThermoHA.__fit_prop:
             try:
                 setattr(ha, p, np.array(data[p], dtype=float))
             except KeyError:
@@ -261,6 +262,9 @@ class ThermoHA():
 
 class ThermoQHA():
     """Quasi-harmonic lattice dynamics I/O."""
+    # QHA fitted properties.
+    __fit_prop = ['gruneisen', 'volume', 'alpha_v', 'helmholtz', 'gibbs',
+                  'entropy', 'c_v', 'c_p', 'k_t', 'k_s', ]
     @classmethod
     def write_combine_data(cls, qha, overlap=[], pdt=[]):
         """
@@ -372,9 +376,12 @@ class ThermoQHA():
         df = DataFrame(file)
         linebreak1 = df[df[0].str.contains(r'^\s*phonon:')].index.tolist()[0]
         linebreak2 = df[df[0].str.contains(r'^\s*# Close overlaps of phonon modes')].index.tolist()
+        linebreak3 = df[df[0].str.contains(r'^\s*# QHA .+ fit\s*$')].index.tolist()
         data1 = ''.join([i for i in df[0].loc[0:linebreak1-1]])
+        if len(linebreak3) > 0: endline = linebreak3[0]-1
+        else: endline = -1
         if len(linebreak2) > 0:
-            data2 = ''.join([i for i in df[0].loc[linebreak2[0]:]])
+            data2 = ''.join([i for i in df[0].loc[linebreak2[0]:endline]])
         file.close(); del df
 
         file = open(qha.filename, 'w')
@@ -482,9 +489,12 @@ class ThermoQHA():
         df = DataFrame(file)
         linebreak1 = df[df[0].str.contains(r'^\s*phonon:')].index.tolist()[0]
         linebreak2 = df[df[0].str.contains(r'^\s*# Close overlaps of phonon modes')].index.tolist()
+        linebreak3 = df[df[0].str.contains(r'^\s*# QHA .+ fit\s*$')].index.tolist()
         data1 = ''.join([i for i in df[0].loc[0:linebreak1-1]])
+        if len(linebreak3) > 0: endline = linebreak3[0]-1
+        else: endline = -1
         if len(linebreak2) > 0:
-            data2 = ''.join([i for i in df[0].loc[linebreak2[0]:]])
+            data2 = ''.join([i for i in df[0].loc[linebreak2[0]:endline]])
         file.close(); del df
 
         file = open(qha.filename, 'w')
@@ -522,7 +532,7 @@ class ThermoQHA():
         header['equation_of_states'] = qha.eos_method
 
         ile = open(qha.filename, 'a')
-        file.write("# QHA frequency polynomial fit\n\n")
+        file.write("# QHA frequency Gruneisen fit\n\n")
         add_representer(float, _inp_rep)
         dump(header, file, sort_keys=False, default_flow_style=None, width=float("inf"))
 
@@ -588,11 +598,11 @@ class ThermoQHA():
         # Attach EOS fitting info
         file = open(qha.filename, 'r')
         df = DataFrame(file)
-        linebreak = df[df[0].str.contains(r'\s*# QHA .* fit')].index.tolist()
+        linebreak = df[df[0].str.contains(r'^\s*# QHA .+ fit\s*$')].index.tolist()
         if len(linebreak) > 0:
-            data = ''.join([i for i in df[0].loc[:linebreak-1]])
+            data = ''.join([i for i in df[0].loc[:linebreak[0]-1]])
         else:
-            data = ''.join([i for i in df[0].loc[:]])
+            data = ''.join([i for i in df[0].loc[:-1]])
         file.close(); del df
 
         file = open(qha.filename, 'w')
@@ -686,8 +696,7 @@ class ThermoQHA():
         # functions
         file.write("# QHA thermodynamic functions\n\n")
         results = {}
-        for i in ['volume', 'alpha_v', 'helmholtz', 'gibbs', 'entropy',
-                  'c_v', 'c_p', 'k_t', 'k_s']:
+        for i in ThermoQHA.__fit_prop:
             if hasattr(qha, i):
                 results[i] = getattr(qha, i).tolist()
         add_representer(float, _out_rep)
@@ -710,8 +719,7 @@ class ThermoQHA():
         # functions
         file.write("# QHA thermodynamic functions\n\n")
         results = {}
-        for i in ['volume', 'alpha_v', 'helmholtz', 'gibbs', 'entropy',
-                  'c_v', 'c_p', 'k_t', 'k_s']:
+        for i in ThermoQHA.__fit_prop:
             if hasattr(qha, i):
                 results[i] = getattr(qha, i).tolist()
         add_representer(float, _out_rep)
@@ -734,8 +742,7 @@ class ThermoQHA():
         # functions
         file.write("# QHA thermodynamic functions\n\n")
         results = {}
-        for i in ['volume', 'alpha_v', 'helmholtz', 'gibbs', 'entropy',
-                  'c_v', 'c_p', 'k_t', 'k_s']:
+        for i in ThermoQHA.__fit_prop:
             if hasattr(qha, i):
                 results[i] = getattr(qha, i).tolist()
         add_representer(float, _out_rep)
@@ -1129,9 +1136,7 @@ class ThermoQHA():
             pass
 
         # Fitted data
-        properties = ['gruneisen', 'volume', 'alpha_v', 'helmholtz', 'gibbs',
-                      'entropy', 'c_v', 'c_p', 'k_t', 'k_s', ]
-        for p in properties:
+        for p in ThermoQHA.__fit_prop:
             try:
                 setattr(qha, p, np.array(data[p], dtype=float))
             except KeyError:
