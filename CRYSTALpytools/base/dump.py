@@ -106,11 +106,11 @@ class ThermoHA():
 
         # basics
         if hasattr(ha, 'temperature'):
-            header = {'temperature'        : ha.temperature.tolist(),
-                      'pressure'           : ha.pressure.tolist()}
+            header = {'temperature' : ha.temperature.reshape([1,-1]).tolist(), # Better alignment
+                      'pressure'    : ha.pressure.reshape([1,-1]).tolist()} # Better alignment
             file.write("# HA frequency conditions\n\n")
-            add_representer(float, _inp_rep)
-            dump(header, file, sort_keys=False, default_flow_style=None, width=float("inf"))
+            add_representer(float, _out_rep) # Pressure needs more digits
+            dump(header, file, sort_keys=False, default_flow_style=None, indent=3)
             file.write('\n')
 
         # functions
@@ -214,6 +214,8 @@ class ThermoHA():
                 setattr(ha, p, np.array(data[p], dtype=float))
             except KeyError:
                 pass
+        if hasattr(ha, 'temperature'): ha.temperature = ha.temperature.flatten() # In case of 2D array
+        if hasattr(ha, 'pressure'): ha.pressure = ha.pressure.flatten() # In case of 2D array
         return ha
 
 # -------------------------- Deprecated Methods ------------------------------#
@@ -410,20 +412,20 @@ class ThermoQHA():
         if len(linebreak2) > 0: file.write('%s' % data2)
 
         # QHA basic
-        header = {'temperature'        : qha.temperature.tolist(),
-                  'pressure'           : qha.pressure.tolist(),
-                  'method'             : qha.method,
-                  'poly_order'         : qha.fit_order.tolist(),
-                  'overall_r^2'        : r2avg,
-                  'min_method'         : min_method}
-        if np.all(volume_bound!=None):
-            header['volume_bound'] = [i for i in volume_bound]
-        header['equation_of_states'] = qha.eos_method
-
         file = open(qha.filename, 'a')
         file.write("# QHA frequency polynomial fit\n\n")
-        add_representer(float, _inp_rep)
-        dump(header, file, sort_keys=False, default_flow_style=None, width=float("inf"))
+
+        header = {'temperature' : qha.temperature.reshape([1,-1]).tolist(), # A better alignment
+                  'pressure'    : qha.pressure.reshape([1,-1]).tolist(), # A better alignment
+                  'method'      : qha.method,
+                  'poly_order'  : qha.fit_order.tolist(),
+                  'overall_r^2' : r2avg,
+                  'min_method'  : min_method}
+        if volume_bound is not None:
+            header['volume_bound'] = [i for i in volume_bound]
+        header['equation_of_states'] = qha.eos_method
+        add_representer(float, _out_rep) # Pressure needs more digits
+        dump(header, file, sort_keys=False, default_flow_style=None, indent=3)
 
         # EOS fittings
         fits = {'nfit_e0'     : 1,
@@ -522,19 +524,19 @@ class ThermoQHA():
         if len(linebreak2) > 0: file.write('%s' % data2)
 
         # QHA basic
-        header = {'temperature'        : qha.temperature.tolist(),
-                  'pressure'           : qha.pressure.tolist(),
-                  'method'             : qha.method,
-                  'overall_r^2'        : r2avg,
-                  'min_method'         : min_method}
-        if np.all(volume_bound!=None):
+        file = open(qha.filename, 'a')
+        file.write("# QHA frequency Gruneisen fit\n\n")
+
+        header = {'temperature' : qha.temperature.reshape([1,-1]).tolist(), # A better alignment
+                  'pressure'    : qha.pressure.reshape([1,-1]).tolist(), # A better alignment
+                  'method'      : qha.method,
+                  'overall_r^2' : r2avg,
+                  'min_method'  : min_method}
+        if volume_bound is not None:
             header['volume_bound'] = [i for i in volume_bound]
         header['equation_of_states'] = qha.eos_method
-
-        ile = open(qha.filename, 'a')
-        file.write("# QHA frequency Gruneisen fit\n\n")
-        add_representer(float, _inp_rep)
-        dump(header, file, sort_keys=False, default_flow_style=None, width=float("inf"))
+        add_representer(float, _out_rep) # Pressure needs more digits
+        dump(header, file, sort_keys=False, default_flow_style=None, indent=3)
 
         # EOS fittings
         fits = {'nfit_e0'     : 1,
@@ -609,18 +611,19 @@ class ThermoQHA():
         file.write('%s' % data)
 
         # QHA basic
-        header = {'temperature'        : qha.temperature.tolist(),
-                  'pressure'           : qha.pressure.tolist(),
-                  'method'             : qha.method,
-                  'poly_order'         : qha.fit_order.tolist(),
-                  'overall_r^2'        : r2avg,
-                  'min_method'         : min_method}
-        if np.all(volume_bound!=None):
+        file.write("# QHA EoS fit\n\n")
+
+        header = {'temperature' : qha.temperature.reshape([1,-1]).tolist(), # A better alignment
+                  'pressure'    : qha.pressure.reshape([1,-1]).tolist(), # A better alignment
+                  'method'      : qha.method,
+                  'poly_order'  : qha.fit_order.tolist(),
+                  'overall_r^2' : r2avg,
+                  'min_method'  : min_method}
+        if volume_bound is not None:
             header['volume_bound'] = [i for i in volume_bound]
         header['equation_of_states'] = qha.eos_method
-        file.write("# QHA EoS fit\n\n")
-        add_representer(float, _inp_rep)
-        dump(header, file, sort_keys=False, default_flow_style=None, width=float("inf"))
+        add_representer(float, _out_rep) # Pressure needs more digits
+        dump(header, file, sort_keys=False, default_flow_style=None, indent=3)
 
         # EOS fittings
         fits = {'nfit_eos'     : len(qha.temperature),
@@ -1080,8 +1083,8 @@ class ThermoQHA():
 
         # QHA fit
         try:
-            qha.temperature = np.array(data['temperature'], dtype=float)
-            qha.pressure = np.array(data['pressure'], dtype=float)
+            qha.temperature = np.array(data['temperature'], dtype=float).flatten() # In case of 2D array
+            qha.pressure = np.array(data['pressure'], dtype=float).flatten() # In case of 2D array
             qha.method = data['method']
             qha.eos_method = data['equation_of_states']
             if data['method'] != 'thermo_gruneisen':
@@ -1306,7 +1309,7 @@ class ThermoQHA():
         file.write('\n')
         file.write('%s%s\n' % ('## EQUILIBRIUM VOLUME MINIMISATION: ', min_method))
         file.write('%s%s\n' % ('## HELMHOLTZ FREE ENERGY EOS: ', qha.eos_method))
-        if np.all(volume_bound!=None):
+        if volume_bound is not None:
             file.write('%s\n' %
                        ('## CONSTRAINED VOLUME MINIMIZATION LAUNCHED. VOLUME BOUNDARIES (UNIT: ANGSTROM^3):'))
             file.write('%s%8.2f%s%8.2f\n\n' % 
