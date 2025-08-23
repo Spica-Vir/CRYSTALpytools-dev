@@ -3059,7 +3059,7 @@ class OptBASE():
             maxd (float): Max displacement convergence. Unit: Bohr.
             rmsd (float): RMS displacement convergence. Unit: Bohr.
         """
-        eline = data[data.str.contains(r'^\s+TOTAL ENERGY\(DFT\)\(AU\)\(')].index.to_numpy(dtype=int)
+        eline = data[data.str.contains(r'^\s+TOTAL ENERGY\((DFT|HF)\)\(AU\)\(')].index.to_numpy(dtype=int)
         line = data.loc[eline[-1]].strip().split()
         e = units.H_to_eV(float(line[3]))
         gxline = data[data.str.contains(r'^\s+MAX GRADIENT')].index.to_numpy(dtype=int)
