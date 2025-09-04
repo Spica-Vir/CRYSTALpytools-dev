@@ -166,7 +166,7 @@ class BlockBASE():
             return [], ''
 
         if len(args) != 2 or int(args[0]) != len(args[1]):
-            return ValueError('Input format error. Arguments should be int + list')
+            raise ValueError('Input format error. Arguments should be int + list')
         if type(args[1]) == np.ndarray:
             args[1] = args[1].tolist()
 
