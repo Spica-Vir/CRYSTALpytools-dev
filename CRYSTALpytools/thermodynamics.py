@@ -1144,7 +1144,7 @@ class Quasi_harmonic:
         # Gibbs(V; T, p) minimization nPress*nTempt list
         self.volume = np.zeros([len(self.pressure), len(self.temperature)])
         v_init = self.combined_volume.mean()
-        iv0 = np.argmin(self.combined_volume)
+        iv0 = np.argmin(self.combined_u0)
 
         wt = self.qpoint[:, 3] / np.sum(self.qpoint[:, 3])
 
