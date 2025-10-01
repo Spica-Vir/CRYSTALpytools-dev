@@ -2239,7 +2239,7 @@ class Quasi_harmonic:
                 for im in range(self.nmode):
                     num_freq[iq, im] = self.freq_fit[iq][im](dV)
         elif self.method == 'thermo_gruneisen':
-            iv0 = np.argmin(self.combined_volume)
+            iv0 = np.argmin(self.combined_u0)
             omega0 = self.combined_freq[:, :, iv0]
             v_by_v0 = vol / self.combined_volume[iv0]
             num_freq = omega0 * v_by_v0**-self.gru_fit
