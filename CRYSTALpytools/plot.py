@@ -265,7 +265,7 @@ def plot_relativistics2D(
     from CRYSTALpytools.relativistics import ChargeDensity, Magnetization, \
                                              OrbitalCurrentDensity,SpinCurrentDensity
     import numpy as np
-    from CRYSTALpytools.crystal_io import Properties_output
+    from CRYSTALpytools.io.crystal import Properties_output
     import matplotlib.pyplot as plt
     import warnings
 
@@ -899,7 +899,7 @@ def plot_topond2D(*topond, unit='Angstrom', type='infer', option='normal',
         fig (Figure): Matplotlib Figure object.
     """
     from CRYSTALpytools.topond import ScalarField, Trajectory
-    from CRYSTALpytools.crystal_io import Properties_output
+    from CRYSTALpytools.io.crystal import Properties_output
     import matplotlib.pyplot as plt
     import numpy as np
     import warnings

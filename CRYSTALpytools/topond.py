@@ -55,7 +55,7 @@ class ScalarField():
             cls (ScalarField)
         """
         if source == 'crystal':
-            from CRYSTALpytools.crystal_io import Properties_output
+            from CRYSTALpytools.io.crystal import Properties_output
             obj = Properties_output(output).read_topond(file, type)
         else:
             raise Exception("Unknown file format. Source = '{}'.".format(source))
@@ -254,7 +254,7 @@ class ScalarField():
         Returns:
             self (ScalarField) : Data difference
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         for i in args:
             if isinstance(i, str):
@@ -337,7 +337,7 @@ class Trajectory():
             cls (Trajectory)
         """
         if source == 'crystal':
-            from CRYSTALpytools.crystal_io import Properties_output
+            from CRYSTALpytools.io.crystal import Properties_output
             obj = Properties_output(output).read_topond(file, type)
         else:
             raise Exception("Unknown file format. Source = '{}'.".format(source))

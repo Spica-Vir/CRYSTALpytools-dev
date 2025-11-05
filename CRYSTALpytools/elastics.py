@@ -60,7 +60,7 @@ class Tensor3D():
     def from_file(cls, output, conventional_lattice=True):
         """
         Read elastic tensor from CRYSTAL output file and generate ``Tensor3D``
-        object. Calls the ``crystal_io.Crystal_output.get_elatensor()`` method.
+        object. Calls the ``io.crystal.Crystal_output.get_elatensor()`` method.
         Lattice information is obtained.
 
         Args:
@@ -70,7 +70,7 @@ class Tensor3D():
         Returns:
             cls (Tensor3D)
         """
-        from CRYSTALpytools.crystal_io import Crystal_output
+        from CRYSTALpytools.io.crystal import Crystal_output
         from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 
         out = Crystal_output(output)
@@ -802,7 +802,7 @@ class Tensor2D():
     def from_file(cls, output, thickness):
         """
         Read elastic tensor from CRYSTAL output file and generate ``Tensor2D``
-        object. Calls the ``crystal_io.Crystal_output.get_elatensor()`` method.
+        object. Calls the ``io.crystal.Crystal_output.get_elatensor()`` method.
         Lattice information is obtained.
 
         Args:
@@ -812,7 +812,7 @@ class Tensor2D():
         Returns:
             cls (Tensor2D)
         """
-        from CRYSTALpytools.crystal_io import Crystal_output
+        from CRYSTALpytools.io.crystal import Crystal_output
 
         out = Crystal_output(output)
         if out.get_dimensionality() != 2:
@@ -1303,7 +1303,7 @@ def tensor_from_file(output, conventional_lattice=True, *thickness):
     Returns:
         t (Tensor3D | Tensor2D): Tensor objects.
     """
-    from CRYSTALpytools.crystal_io import Crystal_output
+    from CRYSTALpytools.io.crystal import Crystal_output
 
     out = Crystal_output(output)
     if out.get_dimensionality() == 3:

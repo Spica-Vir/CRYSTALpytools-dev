@@ -6,6 +6,10 @@ Base object of all the input (d12/d3) blocks.
 import numpy as np
 from warnings import warn
 
+# Import supported software here
+from CRYSTALpytools.base import crystal
+
+
 class BlockBASE():
     """
     The base class of 'block' objects
@@ -35,8 +39,6 @@ class BlockBASE():
     """
 
     def __init__(self, bg, ed, sep, line_ed, dic):
-        from CRYSTALpytools import io
-
         self._block_bg = bg # Title or keyword of the block
         self._block_ed = ed # End of block indicator
         self._separator = sep # Separator between keyword and value pairs.
@@ -49,7 +51,10 @@ class BlockBASE():
         self._block_key = sorted(set(key), key=key.index)
         for k in key:
             if self._block_dict[k][1] == True: # Initialize all the subblock objs
-                obj = eval(self._block_dict[k][3])
+                try:
+                    obj = eval(self._block_dict[k][3])
+                except Exception:
+                    raise Exception(f"The specified input block : '{self._block_dict[k][3]}' is invalid.")
                 obj._block_valid = False
                 setattr(self, self._block_dict[k][0], obj)
 
@@ -184,8 +189,7 @@ class BlockBASE():
             key (str): The keyword specified.
         """
         for cttr in self._block_dict[key][2]:
-            cttr = cttr.upper()
-            if cttr == key:
+            if cttr.upper() == key.upper():
                 continue
             try:
                 if self._block_dict[cttr][1] == False: # keyword

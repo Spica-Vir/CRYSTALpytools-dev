@@ -24,8 +24,10 @@ class ChargeDensity(ChgDens):
             cls (ChargeDensity)
         """
         if source.lower() == 'crystal':
-            from CRYSTALpytools.crystal_io import Properties_output
+            from CRYSTALpytools.io.crystal import Properties_output
             return Properties_output(output).read_relativistics(file, type='DENSITY')
+        else:
+            raise Exception(f"Unknown source : '{source}'.")
 
 
 class VectorField():
@@ -51,8 +53,10 @@ class VectorField():
             raise Exception(f"Unknown property: '{prop}'. Use 'MAGNETIZ', 'ORBCURDENS' or 'SPICURDENS'.")
 
         if source.lower() == 'crystal':
-            from CRYSTALpytools.crystal_io import Properties_output
+            from CRYSTALpytools.io.crystal import Properties_output
             return Properties_output(output).read_relativistics(file, type=prop.upper())
+        else:
+            raise Exception(f"Unknown source : '{source}'.")
 
     def plot_2D(self, unit, levels, quiverplot, quiverscale, colorplot, colormap,
                 cbar_label, a_range, b_range, rectangle, edgeplot,

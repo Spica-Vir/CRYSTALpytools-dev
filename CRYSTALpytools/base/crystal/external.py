@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Classes and methods to parse multiple external output formats by 'crystal' and
-'properties' executables, such as 'BAND.DAT' and 'fort.25' formats.
+Classes and methods to parse multiple external output formats by CRYSTAL
+'crystal' and 'properties' executables, such as 'BAND.DAT' and 'fort.25'
+formats.
 """
 from warnings import warn
 import pandas as pd

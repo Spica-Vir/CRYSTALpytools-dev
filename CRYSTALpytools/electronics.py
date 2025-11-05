@@ -68,7 +68,7 @@ class ElectronBand():
         Returns:
             cls (ElectronBand)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         return Properties_output(output).read_electron_band(band)
 
@@ -378,7 +378,7 @@ class FermiSurface():
         Returns:
             cls (FermiSurface)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
         return Properties_output(output).read_Fermi_surface(band)
 
     @property
@@ -1026,7 +1026,7 @@ class ElectronDOS():
         Returns:
             cls (ElectronDOS)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
         return Properties_output().read_electron_dos(dos)
 
     def plot(self, **kwargs):
@@ -1221,7 +1221,7 @@ class ChargeDensity():
         Returns:
             cls (ChargeDensity)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         file = open(files[0], 'r')
         header = file.readline()
@@ -1242,7 +1242,7 @@ class ChargeDensity():
             self (ChargeDensity) : spin dimension, if there is, is not kept.
                 Only charge density difference is subtracted.
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         for i in args:
             if isinstance(i, str):

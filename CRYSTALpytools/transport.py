@@ -78,7 +78,7 @@ class Tensor():
         Returns:
             cls (Tensor)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
         import numpy as np
 
         if method.lower() == 'normal':
@@ -557,7 +557,7 @@ class Distribution():
         Returns:
             cls (Distribution)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         return Properties_output(output).read_transport(boltztra_out)
 
@@ -596,7 +596,7 @@ class Kappa(Tensor):
         Returns:
             cls (Kappa)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         obj = Properties_output(output).read_transport(file)
         if obj.type.upper() != 'KAPPA': raise TypeError('Not a KAPPA.DAT file.')
@@ -637,7 +637,7 @@ class Sigma(Tensor):
         Returns:
             cls (Sigma)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         obj = Properties_output(output).read_transport(file)
         if obj.type.upper() != 'SIGMA': raise TypeError('Not a SIGMA.DAT file.')
@@ -682,7 +682,7 @@ class Seebeck(Tensor):
         Returns:
             cls (Seebeck)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         obj = Properties_output(output).read_transport(file)
         if obj.type.upper() != 'SEEBECK': raise TypeError('Not a SEEBECK.DAT file.')
@@ -723,7 +723,7 @@ class SigmaS(Tensor):
         Returns:
             cls (SigmaS)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         obj = Properties_output(output).read_transport(file)
         if obj.type.upper() != 'SIGMAS': raise TypeError('Not a SIGMAS.DAT file.')
@@ -853,7 +853,7 @@ class TDF(Distribution):
         Returns:
             cls (SigmaS)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
 
         obj = Properties_output(output).read_transport(file)
         if obj.type.upper() != 'TDF': raise TypeError('Not a TDF.DAT file.')

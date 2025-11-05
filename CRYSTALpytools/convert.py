@@ -44,7 +44,7 @@ def cry_bands2pmg(band, output, labels=None):
         BandStructureSymmLine: Pymatgen band structure object.
     """
     from CRYSTALpytools.electronics import ElectronBand
-    from CRYSTALpytools.crystal_io import Properties_output
+    from CRYSTALpytools.io.crystal import Properties_output
 
     # Generate the Band object
     if type(band) == str:
@@ -257,7 +257,7 @@ def cry_out2pmg(output, vacuum=None, initial=False, molecule=True):
     Returns:
         Structure: Pymatgen Structure object.
     """
-    from CRYSTALpytools.crystal_io import Crystal_output
+    from CRYSTALpytools.io.crystal import Crystal_output
     from pymatgen.core.lattice import Lattice
     from pymatgen.core.structure import Structure, Molecule
     import numpy as np

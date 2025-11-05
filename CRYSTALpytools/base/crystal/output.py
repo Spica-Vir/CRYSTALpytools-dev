@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Classes and methods to parse the output files (screen output, or .out and
-.outp files) of 'crystal' and 'properties' executables.
+Classes and methods to parse the screen output files (out, outp) of CRYSTAL
+'crystal' and 'properties' executables.
 """
+import numpy as np
+from warnings import warn
+from copy import deepcopy
+
+import CRYSTALpytools.units as units
+
+# --------------------------- crystal output ---------------------------------#
+
 class GeomBASE():
-    """
-    A container of basic methods for SCF geometry.
-    """
+    """A container of basic methods for SCF geometry."""
     @classmethod
     def read_geom(cls, data):
         """
@@ -22,7 +28,6 @@ class GeomBASE():
             struc (CStructure): Extended Pymatgen Structure
         """
         import pandas as pd
-        import numpy as np
         import re
         from pymatgen.core.lattice import Lattice
         from CRYSTALpytools.geometry import CStructure
@@ -80,9 +85,7 @@ class GeomBASE():
 
 
 class SCFBASE():
-    """
-    A container of basic methods for SCF loop.
-    """
+    """A container of basic methods for SCF loop."""
     @classmethod
     def get_SCF_blocks(cls, data):
         """
@@ -96,8 +99,6 @@ class SCFBASE():
             SCFrange (array[int, int]): The beginning and ending points of every
                 SCF block.
         """
-        import numpy as np
-
         scftitle = data[data.str.contains(r'^\s*T+\s+SDIK\s+TELAPSE')].index.to_numpy(dtype=int)
         scfend = data[data.str.contains(r'^\s*== SCF ENDED')].index.to_numpy(dtype=int)
         # This pattern excludes the initial charge assignment but charge info is not always printed out
@@ -133,15 +134,11 @@ class SCFBASE():
             efermi (array): Fermi energy. Unit: eV
             gap (array): Band gap. Unit: eV
         """
-        import warnings, copy
-        import numpy as np
-        from CRYSTALpytools.units import H_to_eV
-
         # ending lines
         scfend = data[data.str.contains(r'^\s*== SCF ENDED')].index
         if len(scfend) < 1:
             endflag = 'terminated'
-            warnings.warn('SCF convergence not achieved or missing.', stacklevel=3)
+            warn('SCF convergence not achieved or missing.', stacklevel=3)
         elif len(scfend) > 1:
             raise ValueError("The 'read_convergence' method only accepts 1 SCF convergence block. Multiple are found.")
         else:
@@ -149,14 +146,13 @@ class SCFBASE():
                 endflag = 'converged'
             elif 'TOO MANY CYCLES' in data[scfend[0]]:
                 endflag = 'too many cycles'
-                warnings.warn('SCF convergence not achieved or missing.', stacklevel=3)
+                warn('SCF convergence not achieved or missing.', stacklevel=3)
             else:
-                warnings.warn('Unknown termination: {}.'.format(data[scfend[0]]),
-                              stacklevel=3)
+                warn('Unknown termination: {}.'.format(data[scfend[0]]), stacklevel=3)
                 endflag = 'unknown'
 
         stepbg = data[data.str.contains(r'^\s*CHARGE NORMALIZATION FACTOR')].index.to_numpy(dtype=int)
-        steped = copy.deepcopy(stepbg[1:])
+        steped = deepcopy(stepbg[1:])
         ncyc = len(stepbg)
 
         # energies
@@ -165,7 +161,7 @@ class SCFBASE():
         de = data[energies].map(lambda x: x.strip().split()[5]).to_numpy(dtype=float)
         ## set the first digit to 0 rather than total energy
         de[0] = 0.
-        e = H_to_eV(e); de = H_to_eV(de)
+        e = units.H_to_eV(e); de = units.H_to_eV(de)
 
         # spin
         spinflag = data[data.str.contains(r'^\s*SUMMED SPIN DENSITY')].index
@@ -202,15 +198,13 @@ class SCFBASE():
                     gstate = int(len(allgap) / 2)
                     gap.append([np.min(allgap[:gstate]), np.min(allgap[gstate:])])
 
-        efermi = H_to_eV(np.array(efermi, dtype=float))
+        efermi = units.H_to_eV(np.array(efermi, dtype=float))
         gap = np.array(gap, dtype=float)
         return ncyc, endflag, e, de, spin, efermi, gap
 
 
 class OptBASE():
-    """
-    A container of basic methods for Opt loop.
-    """
+    """A container of basic methods for Opt loop."""
     @classmethod
     def get_opt_block(cls, data):
         """
@@ -225,9 +219,6 @@ class OptBASE():
                 OPT step.
             endflag (str): 'terminated', 'converged', 'failed' and 'unknown'
         """
-        import numpy as np
-        import warnings
-
         opttitle = data[data.str.contains(r'^\s*[A-Z]+ OPTIMIZATION - POINT')].index.to_numpy(dtype=int)
         optend = data[data.str.contains(r'^\s*T+ OPTI\s+TELAPSE')].index.to_numpy(dtype=int)
         block_end = data[data.str.contains(r'^\s*\* OPT END')].index.to_numpy(dtype=int)
@@ -238,7 +229,7 @@ class OptBASE():
         if len(opttitle) == 1 and len(block_end) == 0: raise Exception('Initial SCF failed. Nothing to extract.')
         # terminated
         if len(block_end) == 0:
-            warnings.warn('Job interrupted. Not a complete file.', stacklevel=3)
+            warn('Job interrupted. Not a complete file.', stacklevel=3)
             block_end = np.array([data.index[-1]], dtype=int)
             endflag = 'terminated'
         # normal
@@ -247,10 +238,9 @@ class OptBASE():
                 endflag = 'converged'
             elif 'FAILED' in data.loc[block_end[0]]:
                 endflag = 'failed'
-                warnings.warn('Convergence not achieved.', stacklevel=3)
+                warn('Convergence not achieved.', stacklevel=3)
             else:
-                warnings.warn('Unknown termination: {}.'.format(data.loc[block_end[0]]),
-                                  stacklevel=3)
+                warn('Unknown termination: {}.'.format(data.loc[block_end[0]]), stacklevel=3)
                 endflag = 'unknown'
         ## get ranges
         nOPT = len(opttitle)
@@ -278,12 +268,9 @@ class OptBASE():
             maxd (float): Max displacement convergence. Unit: Bohr.
             rmsd (float): RMS displacement convergence. Unit: Bohr.
         """
-        import numpy as np
-        from CRYSTALpytools.units import H_to_eV
-
-        eline = data[data.str.contains(r'^\s+TOTAL ENERGY\(DFT\)\(AU\)\(')].index.to_numpy(dtype=int)
+        eline = data[data.str.contains(r'^\s+TOTAL ENERGY\((DFT|HF)\)\(AU\)\(')].index.to_numpy(dtype=int)
         line = data.loc[eline[-1]].strip().split()
-        e = H_to_eV(float(line[3]))
+        e = units.H_to_eV(float(line[3]))
         gxline = data[data.str.contains(r'^\s+MAX GRADIENT')].index.to_numpy(dtype=int)
         gmline = data[data.str.contains(r'^\s+RMS GRADIENT')].index.to_numpy(dtype=int)
         maxg = float(data.loc[gxline[-1]].strip().split()[2])
@@ -295,7 +282,7 @@ class OptBASE():
             maxd = 0.
             rmsd = 0.
         else:
-            de = H_to_eV(float(line[6]))
+            de = units.H_to_eV(float(line[6]))
             struc = GeomBASE.read_geom(data)
             dxline = data[data.str.contains(r'^\s+MAX DISPLAC\.')].index.to_numpy(dtype=int)
             dmline = data[data.str.contains(r'^\s+RMS DISPLAC\.')].index.to_numpy(dtype=int)
@@ -303,6 +290,7 @@ class OptBASE():
             rmsd = float(data.loc[dmline[-1]].strip().split()[2])
         return e, de, struc, maxg, rmsg, maxd, rmsd
 
+# --------------------------- properties output ------------------------------#
 
 class POutBASE():
     """
@@ -328,7 +316,6 @@ class POutBASE():
             struc (CStructure): Modified Pymatgen structure
         """
         import re
-        import numpy as np
         from pymatgen.core.lattice import Lattice
         from CRYSTALpytools.geometry import CStructure
 
@@ -403,62 +390,70 @@ class POutBASE():
 
     def get_topond_geometry(self):
         """
-        Get the cluster geometry and plot plane base from TOPOND calculation output.
-        All length units are in Bohr.
+        Get the cluster geometry and plot plane base (2D only) from TOPOND
+        calculation output.
 
         Returns:
-            atomsplt (array): Atomic numbers and coordinates in plotting frame. (2D only)
-            base (array): 3(4)\*3 Cartesian coordinates of the 3(4) points defining
-                base vectors BC, BA (2D) or OA, OB, OC (3D). The sequence is (O),
-                A, B, C.
+            atomsplt (array): Atomic numbers and coordinates in plotting frame.
+            base (array): *Valid for 2D plots only* 3\*3 range of orthogonal
+                plotting base x and y. A: (xmin, ymax), B: (xmin, ymin), C:
+                (xmax, ymin). Unit: Bohr.
         """
-        import numpy as np
+        import re
         from CRYSTALpytools.units import angstrom_to_au
         from scipy.spatial.transform import Rotation
 
-        df = self.df
-        title = df[df[0].str.contains(r'^\s*\*\s+T O P O N D')].index.tolist()
-        if len(title) == 0: raise Exception("TOPOND output not found. Is it a TOPOND output file?")
+        data = self.data
+        countline = 0
+        istopond = False; atomsplt = []; rotmx = []; xyrange = [];
+        while countline < len(data):
+            line = data[countline]
+            if re.match(r'^\s*\*\s+T O P O N D', line):
+                istopond = True
+                countline += 1
+            elif re.match(r'^\s*\*\*\* ATOMS \(POINTS\)\: AT\. N\. AND TRASFORMED COORD\.\(AU\)',
+                          line):
+                countline += 2
+                line = data[countline]
+                while line.strip() != '':
+                    atomsplt.append(line.strip().split())
+                    countline += 1
+                    line = data[countline]
+            elif re.match(r'^\s*ROTAT\. MATRIX', line):
+                for i in range(3):
+                    line = data[countline+i]
+                    rotmx.append(line[37:].strip().split()[0:3])
+                countline += 3
+            elif re.match(r'^\s*ORIGIN AT \( AU\; SYSTEM REF\. FRAME\)', line):
+                origin = line[37:].strip().split()[0:3]
+                origin = np.array(origin, dtype=float)
+                countline += 1
+            elif re.match(r'^\s*X AXIS RANGES AND INCREMENTS', line):
+                xyrange.append(line[37:].strip().split()[0:3])
+                countline += 1
+                line = data[countline]
+                xyrange.append(line[37:].strip().split()[0:3])
+                xyrange = np.array(xyrange, dtype=float)
+                if '(ANG)' in line:
+                    xyrange = angstrom_to_au(xyrange)
+                break
+            else:
+                countline += 1
 
-        line2D = df[df[0].str.contains(r'^\s*\*\*\* ATOMS \(POINTS\)\: AT\. N\. AND TRASFORMED COORD\.\(AU\)')].index.tolist()
-        lineplt = df[df[0].str.contains(r'^\s*\*\*\* PLOT INFORMATION \*\*\*')].index.tolist()
-        if len(lineplt) == 0: raise Exception("TOPOND plot information not found.")
-        if len(line2D) == 0: # 3D topond
-            linexyz = df[df[0].str.contains(r'^\s*[XYZ] AXIS RANGES AND INCREMENTS')].index.tolist()
-            xyzrange = df[0].loc[linexyz].map(lambda x: x[37:].strip().split()[0:3]).tolist()
-            xyzrange = np.array(xyzrange, dtype=float)
-            if '(ANG)' in df[0].loc[linexyz[0]]:
-                xyzrange = angstrom_to_au(xyzrange)
-            base = np.vstack([xyzrange[:, 0],
-                              [xyzrange[0, 1]-xyzrange[0, 0], 0., 0.],
-                              [0., xyzrange[1, 1]-xyzrange[1, 0], 0.],
-                              [0., 0., xyzrange[2, 1]-xyzrange[2, 0]]])
-            base[1:] += base[0]
-            atomsplt = []
-        else: # 2D topond
-            linerot = df[df[0].str.contains(r'^\s*ROTAT\. MATRIX')].index.tolist()
-            lineorg = df[df[0].str.contains(r'^\s*ORIGIN AT \( AU\; SYSTEM REF\. FRAME\)')].index.tolist()
-            linexy = df[df[0].str.contains(r'^\s*[XY] AXIS RANGES AND INCREMENTS')].index.tolist()
+        if istopond == False:
+            raise Exception("TOPOND output not found. Is it a TOPOND output file?")
 
-            atomsplt = df[0].loc[line2D[0]+2:lineplt[0]-2].map(lambda x: x.strip().split()).tolist()
-            atomsplt = np.array(atomsplt, dtype=float)
-            rotmx = df[0].loc[linerot[0]:linerot[0]+2].map(lambda x: x[37:].strip().split()[0:3]).tolist()
-            rotmx = np.array(rotmx, dtype=float)
-            origin = np.array(df[0].loc[lineorg[0]][37:].strip().split()[0:3], dtype=float)
-            xyrange = df[0].loc[linexy].map(lambda x: x[37:].strip().split()[0:3]).tolist()
-            xyrange = np.array(xyrange, dtype=float)
-            if '(ANG)' in df[0].loc[linexy[0]]:
-                xyrange = angstrom_to_au(xyrange)
-            # define rotation
-            rot = Rotation.from_matrix(rotmx)
-            originplt = rot.apply(origin)
-            # force origin to 0
-            baseplt = np.zeros([3, 3])
-            baseplt = np.vstack([originplt, originplt, originplt])
-            baseplt[0, 0:2] += [xyrange[0, 0], xyrange[1, 1]]#Y
-            baseplt[1, 0:2] += [xyrange[0, 0], xyrange[1, 0]]#O
-            baseplt[2, 0:2] += [xyrange[0, 1], xyrange[1, 0]]#X
-            base = rot.inv().apply(baseplt)
+        atomsplt = np.array(atomsplt, dtype=float)
+        # define rotation
+        rotmx = np.array(rotmx, dtype=float)
+        rot = Rotation.from_matrix(rotmx)
+        originplt = rot.apply(origin)
+        # force origin to 0
+        baseplt = np.vstack([originplt, originplt, originplt])
+        baseplt[0, 0:2] += [xyrange[0, 0], xyrange[1, 1]]
+        baseplt[1, 0:2] += [xyrange[0, 0], xyrange[1, 0]]
+        baseplt[2, 0:2] += [xyrange[0, 1], xyrange[1, 0]]
+        base = rot.inv().apply(baseplt)
 
         return atomsplt, base
 
@@ -484,7 +479,6 @@ class POutBASE():
             k_pos3d(array): nkpoint\*3 fractional coordinates of k points
         """
         import re
-        import numpy as np
 
         data = self.data
         is_band = False
@@ -529,7 +523,6 @@ class POutBASE():
         The keyword 'XRDSPEC' only. Get calculated XRD spectra.
         """
         import pandas as pd
-        import numpy as np
 
         df = pd.DataFrame(self.data)
         title = df[df[0].str.contains(r'^\s+XRD SPECTRUM\s+$')].index
@@ -547,10 +540,7 @@ class POutBASE():
         Get Fermi energy in eV from the common block.
         """
         import pandas as pd
-        from CRYSTALpytools.units import H_to_eV
 
         df = pd.DataFrame(self.data)
         fline = df[df[0].str.contains(r'^\s*N\. OF SCF CYCLES.+FERMI ENERGY')].index[0]
-        return H_to_eV(float(df[0].loc[fline].strip().split()[-1]))
-
-
+        return units.H_to_eV(float(df[0].loc[fline].strip().split()[-1]))

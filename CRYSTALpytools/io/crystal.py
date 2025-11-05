@@ -4,13 +4,13 @@
 Objects of input / output files of CRYSTAL. Methods to edit or subtract data
 from corresponding files are provided.
 """
-from CRYSTALpytools import units
-from CRYSTALpytools.io._crystalBASE import Crystal_inputBASE
-from CRYSTALpytools.io._crystalBASE import Properties_inputBASE
-from CRYSTALpytools.io._crystalBASE import POutBASE
-from CRYSTALpytools.geometry import Crystal_gui
-
 import numpy as np
+import pandas as pd
+from warnings import warn, filterwarnings
+
+from CRYSTALpytools import units
+from CRYSTALpytools.base.crystal.input import Crystal_inputBASE, Properties_inputBASE
+from CRYSTALpytools.base.crystal.output import POutBASE, OptBASE, GeomBASE, SCFBASE
 
 
 class Crystal_input(Crystal_inputBASE):
@@ -240,7 +240,6 @@ class Crystal_output:
 
     def __init__(self, output_name=None):
         import re
-        import pandas as pd
 
         if np.all(output_name!=None):
             self.name = output_name
@@ -316,8 +315,6 @@ class Crystal_output:
         Returns:
             self.dimensionality (int): Dimensionality of the system.
         """
-        import pandas as pd
-
         dimen_line = self.df[self.df[0].str.contains(
             r'\sGEOMETRY FOR WAVE FUNCTION - DIMENSIONALITY OF THE SYSTEM'
         )].index
@@ -340,8 +337,6 @@ class Crystal_output:
         Returns:
             self.symmops (numpy.ndarray): Symmetry operators
         """
-        import numpy as np
-
         self.n_symmops = 0
         self.symmops = np.array([])
 
@@ -386,12 +381,8 @@ class Crystal_output:
             self.geometry (CStructure | CMolecule): A modified pymatgen Structure
                 or molecule object.
         """
-        import os, warnings
-        import pandas as pd
-        import numpy as np
-        from CRYSTALpytools.base.output import GeomBASE
+        import os
         from CRYSTALpytools.convert import cry_pmg2gui
-        from CRYSTALpytools.crystal_io import Crystal_gui
 
         # Get geometry
         # Use atom coords to read molecule geometries. Go 4 lines up for periodic systems
@@ -442,8 +433,7 @@ class Crystal_output:
                 gui.space_group = self.sg_number
                 gui.write_gui(gui_name, symm=True)
             else:
-                warnings.warn('Symmetry adapted from reference geometry. Make sure that is desired.',
-                              stacklevel=2)
+                warn('Symmetry adapted from reference geometry. Make sure that is desired.', stacklevel=2)
                 gui_ref = Crystal_gui().read_gui(symmetry)
                 gui = cry_pmg2gui(struc, gui_file=None, symmetry=False, zconv=zconv)
                 # Replace the symmops with the reference file
@@ -463,14 +453,10 @@ class Crystal_output:
         Returns:
             self.lattice (np.ndarray): Lattice of the system.
         """
-        import re
-        import warnings
-        import numpy as np
-
         ndimen = self.get_dimensionality()
         self.lattice = None
         if ndimen == 0:
-            warnings.warn('0D system. No lattice.')
+            warn('0D system. No lattice.', stacklevel=2)
             return self.lattice
 
         self.get_geometry(initial=initial, write_gui=False)
@@ -489,12 +475,10 @@ class Crystal_output:
         Returns:
             self.reciprocal_lattice (np.ndarray): Lattice of the system.
         """
-        import warnings
-
         ndimen = self.get_dimensionality()
         self.reciprocal_lattice = None
         if ndimen == 0:
-            warnings.warn('0D system. No lattice.')
+            warn('0D system. No lattice.', stacklevel=2)
             return self.reciprocal_lattice
 
         self.get_lattice(initial=initial)
@@ -540,7 +524,6 @@ class Crystal_output:
         CRYSTAL 0~3D 0~3D space group symbol. Before geometry editing.
         """
         import re
-        import warnings
         from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 
         ndimen = self.get_dimensionality()
@@ -567,8 +550,7 @@ class Crystal_output:
                 break
 
         if sg == 'unknown':
-            warnings.warn('Symmstry information lost. Trying to get from pymatgen...',
-                          stacklevel=2)
+            warn('Symmstry information lost. Trying to get from pymatgen...', stacklevel=2)
             struc = self.get_geometry(initial=True, write_gui=False)
             sg = SpacegroupAnalyzer(struc).get_space_group_symbol()
         return sg
@@ -581,9 +563,6 @@ class Crystal_output:
             self.trans_matrix (np.ndarray): 3\*3 array of supercell
                 expansion matrix
         """
-        import pandas as pd
-        import numpy as np
-
         ndimen = self.get_dimensionality()
         self.trans_matrix = np.eye(3, dtype=float)
 
@@ -629,17 +608,14 @@ class Crystal_output:
         """
         import os
         import re
-        import warnings
-        import numpy as np
         from CRYSTALpytools.convert import cry_pmg2gui
-        from CRYSTALpytools.crystal_io import Crystal_gui
 
         ndimen = self.get_dimensionality()
         self.get_geometry(initial=initial, write_gui=False)
         self.get_trans_matrix()
 
         if ndimen == 0:
-            warnings.warn('0D system. Nothing to reduce.', stacklevel=2)
+            warn('0D system. Nothing to reduce.', stacklevel=2)
             self.primitive_geometry = self.geometry
             return self.primitive_geometry
 
@@ -665,8 +641,7 @@ class Crystal_output:
                 gui.space_group = self.sg_number
                 gui.write_gui(gui_name, symm=True)
             else:
-                warnings.warn('Symmetry adapted from reference geometry. Make sure that is desired.',
-                              stacklevel=2)
+                warn('Symmetry adapted from reference geometry. Make sure that is desired.', stacklevel=2)
                 gui_ref = Crystal_gui().read_gui(symmetry)
                 gui = cry_pmg2gui(pstruc, gui_file=None, symmetry=False)
                 # Replace the symmops with the reference file
@@ -688,12 +663,10 @@ class Crystal_output:
         Returns:
             self.primitive_lattice (np.ndarray): Lattice of the system.
         """
-        import warnings
-
         ndimen = self.get_dimensionality()
         self.primitive_lattice = None
         if ndimen == 0:
-            warnings.warn('0D system. No lattice.')
+            warn('0D system. No lattice.', stacklevel=2)
             return self.primitive_lattice
 
         self.get_primitive_geometry(initial=initial, write_gui=False)
@@ -712,12 +685,10 @@ class Crystal_output:
         Returns:
             self.primitive_reciprocal_lattice (np.ndarray): Lattice of the system.
         """
-        import warnings
-
         ndimen = self.get_dimensionality()
         self.primitive_reciprocal_lattice = None
         if ndimen == 0:
-            warnings.warn('0D system. No lattice.')
+            warn('0D system. No lattice.', stacklevel=2)
             return self.primitive_reciprocal_lattice
 
         self.get_primitive_lattice(initial=initial)
@@ -735,8 +706,6 @@ class Crystal_output:
             list or str: Configuration analysis if available, or a warning message
         """
         import re
-
-        import numpy as np
 
         # Check this is a configuration analysis calculation
         try:
@@ -834,7 +803,6 @@ class Crystal_output:
         ``get_opt_convergence()`` methods on the same page.
         """
         import re
-        import warnings
 
         opttitle = self.df[self.df[0].str.contains(r'^\s*[A-Z]+ OPTIMIZATION - POINT')].index
         if len(opttitle) == 0: # SCF only
@@ -888,11 +856,7 @@ class Crystal_output:
             self.scf_deltae (array|list): Energy difference. Unit: eV
             self.final_energy (float): Last step energy with corrections. Unit: eV
         """
-        import numpy as np
-        import pandas as pd
         import copy
-        from CRYSTALpytools.base.output import SCFBASE
-        from CRYSTALpytools.units import H_to_eV
 
         self.scf_cycles = []
         self.scf_status = []
@@ -932,9 +896,9 @@ class Crystal_output:
             if len(optline) == 0 and len(finalline) == 0:
                 self.final_energy = self.scf_energy[-1]
             elif len(optline) == 0:
-                self.final_energy = H_to_eV(float(self.df[0][finalline[-1]].strip().split()[-1]))
+                self.final_energy = units.H_to_eV(float(self.df[0][finalline[-1]].strip().split()[-1]))
             else:
-                self.final_energy = H_to_eV(float(self.df[0][optline[-1]].strip().split()[-4]))
+                self.final_energy = units.H_to_eV(float(self.df[0][optline[-1]].strip().split()[-4]))
         else:
             self.final_energy = 0.
         return self
@@ -959,9 +923,6 @@ class Crystal_output:
             self.spin_pol (bool): *Not returned but defined* Whether the
                 calculation is spin-polarized.
         """
-        from CRYSTALpytools.base.output import SCFBASE
-        import numpy as np
-
         nSCF, SCFrange = SCFBASE.get_SCF_blocks(self.df[0])
         if history == True:
             self.fermi_energy = []
@@ -1013,9 +974,6 @@ class Crystal_output:
             self.spin_pol (bool): *Not returned but defined* Whether the
                 calculation is spin-polarized.
         """
-        from CRYSTALpytools.base.output import SCFBASE
-        import numpy as np
-
         nSCF, SCFrange = SCFBASE.get_SCF_blocks(self.df[0])
         if history == True:
             self.band_gap = []
@@ -1056,8 +1014,6 @@ class Crystal_output:
                 natom\*3 for spin-polarised systems. [total, :math:`\\alpha`, :math:`\\beta`].
         """
         import re
-        import warnings
-        import numpy as np
 
         mulliken = []  # empty, 1*1 or 2*1 list
         countline = 0
@@ -1081,7 +1037,7 @@ class Crystal_output:
                 countline += 1
 
         if len(mulliken) == 0:
-            warnings.warn('Mulliken analysis not found.', stacklevel=2)
+            warn('Mulliken analysis not found.', stacklevel=2)
             self.mulliken_charges = np.array([], dtype=float)
         elif len(mulliken) == 1:
             self.mulliken_charges = np.array(mulliken[0], dtype=float)
@@ -1135,11 +1091,7 @@ class Crystal_output:
             self.opt_rmsdisp (array): RMS displacement convergence. Unit: Bohr
             self.final_energy (float): Last step energy with corrections. Unit: eV
         """
-        from CRYSTALpytools.crystal_io import Crystal_gui
         from CRYSTALpytools.convert import cry_pmg2gui
-        from CRYSTALpytools.base.output import OptBASE, GeomBASE
-        import numpy as np
-        import warnings
 
         # Initial geometry
         ndimen = self.get_dimensionality()
@@ -1160,8 +1112,7 @@ class Crystal_output:
             try:
                 output = OptBASE.read_opt_block(self.df[0].loc[bg:ed])
             except IndexError: # Unfinished Opt step
-                warnings.warn('Hit the unfinished step. Properties except geometry are set to 0.',
-                              stacklevel=2)
+                warn('Hit the unfinished step. Properties except geometry are set to 0.', stacklevel=2)
                 self.opt_geometry.append(GeomBASE.read_geom(self.df[0].loc[bg:ed]))
                 continue
 
@@ -1213,8 +1164,7 @@ class Crystal_output:
                     gui.space_group = self.sg_number
                     gui.write_gui(gui_list[idx_s], symm=True)
             else:
-                warnings.warn('Symmetry adapted from reference geometry. Make sure that is desired.',
-                              stacklevel=2)
+                warn('Symmetry adapted from reference geometry. Make sure that is desired.', stacklevel=2)
                 gui_ref = Crystal_gui().read_gui(symmetry)
                 for idx_s, s in enumerate(self.opt_geometry):
                     gui = cry_pmg2gui(s, gui_file=None, symmetry=False)
@@ -1251,14 +1201,12 @@ class Crystal_output:
             self.opt_maxgrad (array): Maximum gradient convergence. Unit: Hartree/Bohr
             self.opt_rmsgrad (array): RMS gradient convergence. Unit: Hartree/Bohr
         """
-        import warnings, re
-        import numpy as np
-        import pandas as pd
+        import re
 
         title = self.df[self.df[0].str.contains(r'^\s*OPTOPTOPTOPTOPTOPTOPTOPTOPTOPTOPTOPTOPTOPT')].index
         if initial == False or grad == True:
             if len(title) == 0:
-                warnings.warn('Not a geometry optimisation: Set initial = True and grad = False', stacklevel=2)
+                warn('Not a geometry optimisation: Set initial = True and grad = False', stacklevel=2)
                 initial = True; grad = False
 
         if grad == True:
@@ -1375,7 +1323,6 @@ class Crystal_output:
                 nqpoint\*nmode\*natom\*3 array of eigenvectors.
         """
         import re
-        import pandas as pd
         from CRYSTALpytools.phonons import Phonon
 
         is_freq = False
@@ -1612,8 +1559,6 @@ class Crystal_output:
             self.pband (PhononBand): ``phonons.PhononBand`` object.
         """
         from CRYSTALpytools.phonons import PhononBand
-        import pandas as pd
-        import numpy as np
 
         band_title = self.df[self.df[0].str.contains(r'^\s*\*\s+PHONON BANDS\s+\*\s*$')].index
         scelphono = self.df[self.df[0].str.contains(r'\s*\*+\s+ATOMS IN THE SUPERCELL REORDERED FOR PHONON CALCULATION\s*$')].index
@@ -1678,9 +1623,6 @@ class Crystal_output:
         Returns:
             self.pdos (PhononDOS): ``phonons.PhononDOS`` object.
         """
-        import pandas as pd
-        import numpy as np
-        from CRYSTALpytools.units import cm_to_thz, thz_to_cm
         from CRYSTALpytools.phonons import PhononDOS
 
         # read from .out file
@@ -1708,7 +1650,7 @@ class Crystal_output:
         element_prj = np.array(element_prj, ndmin=1)
         nprj = len(atom_prj) + len(element_prj) + 1
         doss = np.zeros([nprj, totprj.shape[1], 1], dtype=float)
-        freq = cm_to_thz(totprj[0, :, 0])
+        freq = units.cm_to_thz(totprj[0, :, 0])
         doss[0, :, 0] = np.sum(totprj[:, :, 1], axis=0)
 
         ## atomic
@@ -1736,7 +1678,7 @@ class Crystal_output:
                         dtype=float
                     )[:, 1]
 
-        doss = thz_to_cm(doss)
+        doss = units.thz_to_cm(doss)
         self.pdos = PhononDOS(doss, freq, unit='THz')
         return self.pdos
 
@@ -1760,9 +1702,7 @@ class Crystal_output:
                 ``spectra.IR`` or ``spectra.Raman`` objects. Attribute names
                 same as ``type`` are set.
         """
-        import numpy as np
         from CRYSTALpytools.spectra import IR, Raman
-        import warnings
 
         # sanity check
         accepted_types = ['IRSPEC', 'RAMSPEC']
@@ -1778,29 +1718,21 @@ class Crystal_output:
         type = type.upper()
 
         if not hasattr(self, 'df'):
-            warnings.warn('Output file not available. Geometry information missing.',
-                          stacklevel=2)
+            warn('Output file not available. Geometry information missing.', stacklevel=2)
         else:
             if type == 'IRSPEC':
                 title = self.df[self.df[0].str.contains(
                     r'^\s*\*\s+CALCULATION OF INFRARED ABSORBANCE \/ REFLECTANCE SPECTRA'
                 )].index
                 if len(title) == 0:
-                    warnings.warn(
-                        'IR spectra block is not found in the screen output. Are files from the same calculation?',
-                         stacklevel=2
-                    )
+                    warn('IR spectra block is not found in the screen output. Are files from the same calculation?', stacklevel=2)
             elif type == 'RAMSPEC':
                 # mute pandas warning
-                warnings.filterwarnings("ignore", 'This pattern is interpreted as a regular expression, and has match groups.')
-                title = self.df[self.df[0].str.contains(
-                    r'^\s*(\<RAMAN\>){11}'
+                filterwarnings("ignore", 'This pattern is interpreted as a regular expression, and has match groups.')
+                title = self.df[self.df[0].str.contains(r'^\s*(\<RAMAN\>){11}'
                 )].index
                 if len(title) == 0:
-                    warnings.warn(
-                        'Raman spectra block is not found in the screen output. Are files from the same calculation?',
-                        stacklevel=2
-                    )
+                    warn('Raman spectra block is not found in the screen output. Are files from the same calculation?', stacklevel=2)
         # read file and instantiation
         data = np.loadtxt(specfile)
         if type == 'IRSPEC':
@@ -1871,8 +1803,7 @@ class Crystal_output:
                 )) * 1e-20 # AA^2 --> m^2
                 self.tensor = units.au_to_GPa(self.tensor) * (units.au_to_angstrom(1.)*1e-10)**3 / area # Eh --> GJ/m
         else:
-            warnings.warn('Unknown unit identified, return to CRYSTAL default unit.',
-                          stacklevel=2)
+            warn('Unknown unit identified, return to CRYSTAL default unit.', stacklevel=2)
 
         # Effective thickness
         if len(thickness) > 0:
@@ -1983,11 +1914,9 @@ class Crystal_output:
             attributes have been listed here, but the yy, zz, xy, xz, yz components
             are available as well.  
         """
-        import re, warnings
-        import numpy as np
+        import re
 
-        warnings.warn('This is not a released feature of CRYSTAL23 v1.0.1, make sure that you know what you are doing.',
-                      stacklevel=2)
+        warn('This is not a released feature of CRYSTAL23 v1.0.1, make sure that you know what you are doing.', stacklevel=2)
 
         # Initialize some logical variables
         save = False
@@ -2354,10 +2283,7 @@ class Crystal_output:
         Deprecated. Get structure object by 'get_geometry' and call the
         'num_sites' attribute
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated property. Use 'get_geometry' and call the 'natoms' attribute of output.",
-                      stacklevel=2)
+        warn("You are calling a deprecated property. Use 'get_geometry' and call the 'natoms' attribute of output.", stacklevel=2)
         struc = self.get_geometry(initial=True, write_gui=False)
         return struc.num_sites
 
@@ -2367,10 +2293,7 @@ class Crystal_output:
         Deprecated. Get structure object by 'get_geometry' and call the
         'species_symbol' attribute
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated property. Use 'get_geometry' and call the 'species_symbol' attribute of output.",
-                      stacklevel=2)
+        warn("You are calling a deprecated property. Use 'get_geometry' and call the 'species_symbol' attribute of output.", stacklevel=2)
         struc = self.get_geometry(initial=True, write_gui=False)
         return struc.species_symbol
 
@@ -2380,10 +2303,7 @@ class Crystal_output:
         Deprecated. Get structure object by 'get_geometry' and call the
         'species_Z' attribute
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated property. Use 'get_geometry' and call the 'species_Z' attribute of output.",
-                      stacklevel=2)
+        warn("You are calling a deprecated property. Use 'get_geometry' and call the 'species_Z' attribute of output.", stacklevel=2)
         struc = self.get_geometry(initial=True, write_gui=False)
         return struc.species_Z
 
@@ -2393,10 +2313,7 @@ class Crystal_output:
         Deprecated. Get structure object by 'get_geometry' and call the
         'crys_coords' attribute
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated property. Use 'get_geometry' and call the 'crys_coords' attribute of output.",
-                      stacklevel=2)
+        warn("You are calling a deprecated property. Use 'get_geometry' and call the 'crys_coords' attribute of output.", stacklevel=2)
         struc = self.get_geometry(initial=True, write_gui=False)
         return struc.crys_coords
 
@@ -2406,10 +2323,7 @@ class Crystal_output:
         Deprecated. Get structure object by 'get_geometry' and call the
         'cart_coords' attribute
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated property. Use 'get_geometry' and call the 'cart_coords' attribute of output.",
-                      stacklevel=2)
+        warn("You are calling a deprecated property. Use 'get_geometry' and call the 'cart_coords' attribute of output.", stacklevel=2)
         struc = self.get_geometry(initial=True, write_gui=False)
         return struc.cart_coords
 
@@ -2419,10 +2333,7 @@ class Crystal_output:
         Deprecated. Get structure object by 'get_geometry' and call the
         'crys_coords' attribute
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated property. Use 'get_geometry' and call the 'crys_coords' attribute of output.",
-                      stacklevel=2)
+        warn("You are calling a deprecated property. Use 'get_geometry' and call the 'crys_coords' attribute of output.", stacklevel=2)
         struc = self.get_geometry(initial=True, write_gui=False)
         return struc.crys_coords
 
@@ -2430,10 +2341,7 @@ class Crystal_output:
         """
         Deprecated. Use ``get_geometry(initial=False)``. 
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated property. Use 'get_geometry(initial=False)'.",
-                      stacklevel=2)
+        warn("You are calling a deprecated property. Use 'get_geometry(initial=False)'.", stacklevel=2)
 
         struc = self.get_geometry(initial=False, write_gui=write_gui_file, symm_info=symm_info)
         self.last_geom = [struc.lattice.matrix.tolist(), struc.species_Z, struc.cart_coords.tolist()]
@@ -2504,8 +2412,6 @@ class Properties_input(Properties_inputBASE):
             precision (int): Precision in the calculation of ``numpy.gcd``
             title (str): The title of the calculation.
         """
-        import numpy as np
-
         bands_block = []
 
         # path from a pymatgen k_path object
@@ -2588,8 +2494,7 @@ class Properties_input(Properties_inputBASE):
                     raise ValueError('Outut file is needed.')
                 else:
                     if proj_type == 'ao':
-                        warnings.warn("When element name is specified, proj_type must be 'atom'.",
-                                      stacklevel=2)
+                        warn("When element name is specified, proj_type must be 'atom'.", stacklevel=2)
 
                     output = Crystal_output(output_file)
                     struc = output.get_geometry(initial=False, write_gui=False)
@@ -2617,9 +2522,7 @@ class Properties_input(Properties_inputBASE):
         """
         Deprecated. Use either ``self.doss()`` or ``self.make_doss_block()``
         """
-        import warnings
-
-        warnings.warn('Deprecated. Use make_doss_block() method instead.', stacklevel=2)
+        warn('Deprecated. Use make_doss_block() method instead.', stacklevel=2)
         return self.make_doss_block(n_points, band_range, e_range, plotting_option,
                                     poly, print_option, projections, proj_type, output_file)
 
@@ -2627,9 +2530,7 @@ class Properties_input(Properties_inputBASE):
         """
         Deprecated. Use ``self.newk()``.
         """
-        import warnings
-
-        warnings.warn('Deprecated. Use newk() method instead.', stacklevel=2)
+        warn('Deprecated. Use newk() method instead.', stacklevel=2)
         return self.newk(shrink1, shrink2, Fermi, print_option)
 
     def make_bands_block(self, k_path, n_kpoints, first_band, last_band,
@@ -2638,9 +2539,7 @@ class Properties_input(Properties_inputBASE):
         """
         Deprecated. Use ``self.make_band_block()``.
         """
-        import warnings
-
-        warnings.warn('Deprecated. Use make_band_block() method instead.', stacklevel=2)
+        warn('Deprecated. Use make_band_block() method instead.', stacklevel=2)
         return self.make_band_block(k_path, n_kpoints, first_band, last_band, print_eig,
                                     print_option, precision, title)
 
@@ -2648,18 +2547,14 @@ class Properties_input(Properties_inputBASE):
         """
         Deprecated. Use ``read_file()``
         """
-        import warnings
-
-        warnings.warn('Deprecated. Use read_file() method instead.', stacklevel=2)
+        warn('Deprecated. Use read_file() method instead.', stacklevel=2)
         return self.__init__(input_name)
 
     def write_properties_input(self, input_name):
         """
         Deprecated. Use ``write_file()``
         """
-        import warnings
-
-        warnings.warn('Deprecated. Use write_file() method instead.', stacklevel=2)
+        warn('Deprecated. Use write_file() method instead.', stacklevel=2)
         return self.write_file(input_name)
 
 
@@ -2724,10 +2619,8 @@ class Properties_output(POutBASE):
         Returns:
             self.bands (ElectronBand): The :ref:`electronics.ElectronBand <ref-ElectronBand>` object.
         """
-        from CRYSTALpytools.base.extfmt import CrgraParser, DLVParser
-        from CRYSTALpytools.units import H_to_eV, angstrom_to_au
+        from CRYSTALpytools.base.external_fmt import CrgraParser, DLVParser
         from CRYSTALpytools.electronics import ElectronBand
-        import warnings
 
         file = open(band_file)
         flag = file.readline()
@@ -2740,8 +2633,7 @@ class Properties_output(POutBASE):
             raise Exception("Pattern not found in '{}'. Is it a band structure file?".format(band_file))
 
         if not hasattr(self, 'file_name'):
-            warnings.warn('Properties output file not found: 3D k path not available.',
-                          stacklevel=2)
+            warn('Properties output file not found: 3D k path not available.', stacklevel=2)
             struc = None; t3d = None; k3d = None
         else:
             struc = super().get_geometry()
@@ -2769,17 +2661,14 @@ class Properties_output(POutBASE):
         Returns:
             self.FermiSurf (FermiSurface): The :ref:`electronics.FermiSurface <ref-FermiSurface>` object
         """
-        from CRYSTALpytools.base.extfmt import DLVParser
-        from CRYSTALpytools.units import H_to_eV, angstrom_to_au
+        from CRYSTALpytools.base.external_fmt import DLVParser
         from CRYSTALpytools.electronics import FermiSurface
-        import warnings
 
         rlatt, band, _ = DLVParser.fort35(f35_file)
-        rlatt = angstrom_to_au(rlatt) # A^-1 to Bohr^-1
-        band = H_to_eV(band)
+        rlatt = units.angstrom_to_au(rlatt) # A^-1 to Bohr^-1
+        band = units.H_to_eV(band)
         if not hasattr(self, 'file_name'):
-            warnings.warn('Properties output file not found: Fermi energy not available.',
-                          stacklevel=2)
+            warn('Properties output file not found: Fermi energy not available.', stacklevel=2)
             efermi = 0.
         else:
             efermi = super().get_Fermi()
@@ -2797,7 +2686,7 @@ class Properties_output(POutBASE):
         Returns:
             self.doss (ElectronDOS): The :ref:`electronics.ElectronDOS <ref-ElectronDOS>` object.
         """
-        from CRYSTALpytools.base.extfmt import CrgraParser, DLVParser
+        from CRYSTALpytools.base.external_fmt import CrgraParser, DLVParser
         from CRYSTALpytools.electronics import ElectronDOS
 
         file = open(dos_file)
@@ -2847,8 +2736,7 @@ class Properties_output(POutBASE):
                 ``self.TOPOND``. A ``topond.ChargeDensity`` or
                 ``topond.GradientTraj`` class is generated.
         """
-        import warnings
-        from CRYSTALpytools.base.extfmt import TOPONDParser
+        from CRYSTALpytools.base.external_fmt import TOPONDParser
         from CRYSTALpytools.topond import \
             ChargeDensity, SpinDensity, Gradient, Laplacian, HamiltonianKE, \
             LagrangianKE, VirialField, ELF, GradientTraj, ChemicalGraph
@@ -2870,8 +2758,7 @@ class Properties_output(POutBASE):
 
         # still need to distinguish surf and traj
         if issurf==False and istraj==False:
-            warnings.warn("Unknown type string / filename does not contian type string.",
-                          stacklevel=2)
+            warn("Unknown type string / filename does not contian type string.", stacklevel=2)
             type = 'unknown'
             file = open(topondfile, 'r')
             header = file.readline()
@@ -2882,8 +2769,7 @@ class Properties_output(POutBASE):
         if issurf == True:
             _, a, b, c, _, _, map, unit = TOPONDParser.contour2D(topondfile)
             if not hasattr(self, 'file_name'):
-                warnings.warn('Properties output file not found: Geometry not available',
-                              stacklevel=2)
+                warn('Properties output file not found: Geometry not available', stacklevel=2)
                 struc = None
                 # The a, b, c by are dummy base vectors. Info in 3D space lost.
                 base = np.vstack([a, b, c])
@@ -2965,11 +2851,8 @@ class Properties_output(POutBASE):
         Returns:
             self.echg (ChargeDensity): ``electronics.ChargeDensity`` object.
         """
-        from CRYSTALpytools.base.extfmt import CrgraParser
+        from CRYSTALpytools.base.external_fmt import CrgraParser
         from CRYSTALpytools.electronics import ChargeDensity
-        import numpy as np
-        import pandas as pd
-        import warnings
 
         method = method.lower()
         if method == 'substract': method = 'subtract'# an old typo
@@ -2979,8 +2862,7 @@ class Properties_output(POutBASE):
         pato = [] # used for method check
         if not hasattr(self, 'file_name'):
             if np.all(index==None):
-                warnings.warn('Properties output file not found: Only the first 1 (2) density map(s) will be read for spin=1(2).',
-                              stacklevel=2)
+                warn('Properties output file not found: Only the first 1 (2) density map(s) will be read for spin=1(2).', stacklevel=2)
                 index = None
             else:
                 index = np.array(index, dtype=int, ndmin=1)
@@ -3017,8 +2899,7 @@ class Properties_output(POutBASE):
                                           np.where(headers>chg[1-use_idx])[0][0]], dtype=int)
                         index = np.sort(index)
                 else:
-                    warnings.warn('Multiple charge densities exist in the calculation. Only the first density map will be read.',
-                                  stacklevel=2)
+                    warn('Multiple charge densities exist in the calculation. Only the first density map will be read.', stacklevel=2)
                     index = 0
 
         # read file 0
@@ -3041,17 +2922,16 @@ class Properties_output(POutBASE):
             self.echg.data = self.echg.data[::-1] # base vector use BA rather than AB
             if method == 'alpha_beta':
                 if len(f25_files) > 1:
-                    warnings.warn("The 'alpha_beta' method is used only for a single entry. Nothing is done to other entries.",
-                                  stacklevel=2)
+                    warn("The 'alpha_beta' method is used only for a single entry. Nothing is done to other entries.", stacklevel=2)
                 elif spin != 2:
-                    warnings.warn("Not a spin-polarized system, do nothing", stacklevel=2)
+                    warn("Not a spin-polarized system, do nothing", stacklevel=2)
                 else:
                     self.echg.alpha_beta()
             elif method == 'subtract':
                 if len(f25_files) > 1:
                     self.echg = self.echg.subtract(*[f for f in f25_files[1:]])
                 else:
-                    warnings.warn("Nothing to subtract.", stacklevel=2)
+                    warn("Nothing to subtract.", stacklevel=2)
 
         return self.echg
 
@@ -3082,11 +2962,8 @@ class Properties_output(POutBASE):
         Returns:
             self.ech3 (ChargeDensity): ``electronics.ChargeDensity`` object.
         """
-        from CRYSTALpytools.base.extfmt import CUBEParser
+        from CRYSTALpytools.base.external_fmt import CUBEParser
         from CRYSTALpytools.electronics import ChargeDensity
-        import numpy as np
-        import pandas as pd
-        import warnings
 
         method = method.lower()
         if method == 'substract': method = 'subtract'# an old typo
@@ -3112,8 +2989,7 @@ class Properties_output(POutBASE):
         if hasattr(self, 'file_name'):
             struc1 = super().get_geometry()
             if compare_struc(struc, struc1) == False:
-                warnings.warn('Inconsistent geometries are given in output and CUBE files, using the one from output.',
-                              stacklevel=2)
+                warn('Inconsistent geometries are given in output and CUBE files, using the one from output.', stacklevel=2)
             struc = struc1
 
         # Other entries
@@ -3178,9 +3054,7 @@ class Properties_output(POutBASE):
                 names. Unit: charge densities, :math:`\\AA^{-3}`; magnetization,
                 A/m; Orbital/spin densities, A/m :math:`^{2}`.
         """
-        import numpy as np
-        import pandas as pd
-        from CRYSTALpytools.base.extfmt import CrgraParser
+        from CRYSTALpytools.base.external_fmt import CrgraParser
         from CRYSTALpytools.relativistics import (ChargeDensity, Magnetization,
             OrbitalCurrentDensity, SpinCurrentDensity)
 
@@ -3286,7 +3160,6 @@ class Properties_output(POutBASE):
             self.XRDspec (XRD): The ``spectra.XRD`` object with spectra
                 information.
         """
-        import numpy as np
         from CRYSTALpytools.spectra import XRD
 
         if not hasattr(self, 'file_name'):
@@ -3318,8 +3191,6 @@ class Properties_output(POutBASE):
         """
         import re
         import sys
-
-        import pandas as pd
 
         self.read_file(properties_output)
 
@@ -3363,9 +3234,6 @@ class Properties_output(POutBASE):
             self: The modified object with extracted Laplacian profile data.
         """
         import re
-
-        import numpy as np
-        import pandas as pd
 
         data = self.data
         filename = self.abspath
@@ -3429,9 +3297,6 @@ class Properties_output(POutBASE):
             self: The modified object with extracted density profile data.
         """
         import re
-
-        import numpy as np
-        import pandas as pd
 
         self.read_file(properties_output)
 
@@ -3510,7 +3375,7 @@ class Properties_output(POutBASE):
                 (TDF) classes, depending on the input file. The attribute name
                 is upper case types.
         """
-        from CRYSTALpytools.base.extfmt import BOLTZTRAParaser
+        from CRYSTALpytools.base.external_fmt import BOLTZTRAParaser
         from CRYSTALpytools.transport import Kappa, Sigma, Seebeck, SigmaS, TDF
 
         if hasattr(self, 'file_name'):
@@ -3548,60 +3413,42 @@ class Properties_output(POutBASE):
         """
         Deprecated. Use ``read_electron_band``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_electron_band' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_electron_band' instead.", stacklevel=2)
         return self.read_electron_band(band_file)
 
     def read_cry_doss(self, dos_file):
         """
         Deprecated. Use ``read_electron_dos``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_electron_dos' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_electron_dos' instead.", stacklevel=2)
         return self.read_electron_dos(dos_file)
 
     def read_cry_ECHG(self, f25_file):
         """
         Deprecated. Use ``read_ECHG``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_ECHG' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_ECHG' instead.", stacklevel=2)
         return self.read_ECHG(f25_file, method='normal')
 
     def read_cry_ECHG_delta(self, f25_file1, f25_file2):
         """
         Deprecated. Use ``read_ECHG``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_ECHG' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_ECHG' instead.", stacklevel=2)
         return self.read_ECHG(f25_file1, f25_file2, method='subtract')
 
     def read_cry_contour(self, properties_output):
         """
         Deprecated. Use ``read_topond``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_topond' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_topond' instead.", stacklevel=2)
         return self.read_topond(properties_output)
 
     def read_cry_seebeck(self, properties_output):
         """
         Deprecated. Use ``read_transport``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_transport' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_transport' instead.", stacklevel=2)
         obj = self.read_transport(properties_output)
         if obj.type != 'SEEBECK':
             raise Exception('Input is not a SEBECK coefficient file.')
@@ -3611,10 +3458,7 @@ class Properties_output(POutBASE):
         """
         Deprecated. Use ``read_transport``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_transport' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_transport' instead.", stacklevel=2)
         obj = self.read_transport(properties_output)
         if obj.type != 'SIGMA':
             raise Exception('Input is not a conductivity file.')
@@ -3624,10 +3468,7 @@ class Properties_output(POutBASE):
         """
         Deprecated. Use ``read_relativistics``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_relativistics' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_relativistics' instead.", stacklevel=2)
         index = [0]
         for i in which_prop:
             if 'm' in which_prop:
@@ -3647,20 +3488,10 @@ class Properties_output(POutBASE):
         """
         Deprecated. Use ``read_XRDspec``.
         """
-        import warnings
-
-        warnings.warn("You are calling a deprecated function. Use 'read_XRDspec' instead.",
-                      stacklevel=2)
+        warn("You are calling a deprecated function. Use 'read_XRDspec' instead.", stacklevel=2)
         if not hasattr(self, 'file_name'): self = Properties_output(properties_output)
         self.read_XRDspec()
         return self.XRDspec
-
-
-
-class Crystal_gui(Crystal_gui):
-    """
-    Inherited from ``geometry.Crystal_gui``. See documentations :ref:`there <ref-geometry>`.
-    """
 
 
 class Crystal_density():
@@ -3688,8 +3519,6 @@ class Crystal_density():
 
         import re
         import sys
-
-        import numpy as np
 
         try:
             file = open(self.file_name, 'r')
@@ -3962,8 +3791,6 @@ def cry_combine_density(density1, density2, density3, new_density='new_density.f
 
     import sys
 
-    import numpy as np
-
     try:
         density1_data = Crystal_density(density1)  # substrate
         density2_data = Crystal_density(density2)  # adsorbate
@@ -4066,9 +3893,6 @@ def write_cry_density(fort98_name, new_p, new_fort98):
         This is a work in progress. If you are interested in this functionality,
         please open an Issue on GitHub.
     """
-
-    import numpy as np
-
     file = open(fort98_name, 'r')
     data = file.readlines()
     file.close()

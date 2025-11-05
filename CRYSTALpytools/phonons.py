@@ -68,7 +68,7 @@ class PhononBand():
         Returns:
             cls (PhononBand)
         """
-        from CRYSTALpytools.crystal_io import Crystal_output
+        from CRYSTALpytools.io.crystal import Crystal_output
 
         out = Crystal_output(output).get_phonon_band(q_overlap_tol=q_overlap_tol)
         return out
@@ -167,7 +167,7 @@ class PhononDOS():
         Returns:
             cls (PhononDOS)
         """
-        from CRYSTALpytools.crystal_io import Crystal_output
+        from CRYSTALpytools.io.crystal import Crystal_output
 
         out = Crystal_output(output).get_phonon_dos(read_INS=read_INS,
                                                     atom_prj=atom_prj,
@@ -407,7 +407,7 @@ class Phonon():
                 only contains symmetry info of a q point. Use a list of
                 filenames for multiple q points.
         """
-        from CRYSTALpytools.crystal_io import Crystal_output
+        from CRYSTALpytools.io.crystal import Crystal_output
         from CRYSTALpytools.io.phonopy import YAML
 
         source = source.lower()

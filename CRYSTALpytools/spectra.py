@@ -31,7 +31,7 @@ class XRD():
         Returns:
             cls (XRD)
         """
-        from CRYSTALpytools.crystal_io import Properties_output
+        from CRYSTALpytools.io.crystal import Properties_output
         return Properties_output(output).read_XRDspec(option=option)
 
     def plot(self, theta_range=[], normalize=True, title=None,
@@ -111,7 +111,7 @@ class IR():
         Returns:
             cls (IR)
         """
-        from CRYSTALpytools.crystal_io import Crystal_output
+        from CRYSTALpytools.io.crystal import Crystal_output
         return Crystal_output(output).get_spectra(specfile, 'IRSPEC')
 
     def plot(self, unit='cm-1', option='LG', normalize=True, REFL_overlap=True,
@@ -345,7 +345,7 @@ class Raman():
         Returns:
             cls (IR)
         """
-        from CRYSTALpytools.crystal_io import Crystal_output
+        from CRYSTALpytools.io.crystal import Crystal_output
         return Crystal_output(output).get_spectra(specfile, 'RAMSPEC')
 
     def plot(self, option='poly', normalize=True, overlap=True,
