@@ -13,7 +13,6 @@ from scipy.constants import N_A as Avogadro
 from scipy.constants import h as Planck
 from scipy.constants import k as Boltzmann
 from scipy.optimize import minimize, linear_sum_assignment
-from sympy import diff, lambdify, symbols
 
 from CRYSTALpytools.base.dump import ThermoHA, ThermoQHA
 from CRYSTALpytools import units
@@ -825,7 +824,7 @@ class Quasi_harmonic:
         or 'min_poly_order' in kwargs.keys(): refit = True
 
         if refit == False:
-            warnings.warn('Nothing to re-fit. Return to the same object.', stacklevel=2)
+            warn('Nothing to re-fit. Return to the same object.', stacklevel=2)
             return self
 
         # Fit DFT total energy. Fitted values will not be covered.
@@ -928,13 +927,15 @@ class Quasi_harmonic:
 
         # Fit equation of states for K_T.
         self.eos = []; self.k_t = np.zeros(self.volume.shape)
-        v = symbols('v')
+        dV = 1e-3 * (self.combined_volume.max()-self.combined_volume.min()) / (self.combined_volume.shape[0]-1) # 0.1% of steplength
         for idx_t, i in enumerate(self.temperature):
-            eos = self.eos_fit(self.volume[:, idx_t], self.helmholtz[:, idx_t], self.eos_method, **eosinp)
-            df = diff(eos(v), v, 2)
-            lam_df = lambdify(v, df, 'numpy')
-            self.k_t[:, idx_t] = self.volume[:, idx_t] * lam_df(self.volume[:, idx_t]) / molpv
+            V0 = self.volume[:, idx_t]; F0 = self.helmholtz[:, idx_t]
+            eos = self.eos_fit(V0, F0, self.eos_method, **eosinp)
+            Feos = eos(V0)
+            self.k_t[:, idx_t] = V0 * (eos(V0+dV) - 2*Feos + eos(V0-dV)) / dV**2
             self.eos.append(eos)
+        self.k_t /= molpv
+        del dV, V0, F0, eos, Feos
 
         # Get mode-specific and macroscopic Grüneisen parameter
         self.gruneisen = np.zeros(self.volume.shape)
@@ -1095,7 +1096,7 @@ class Quasi_harmonic:
         or 'min_poly_order' in kwargs.keys(): refit = True
 
         if refit == False:
-            warnings.warn('Nothing to re-fit. Return to the same object.', stacklevel=2)
+            warn('Nothing to re-fit. Return to the same object.', stacklevel=2)
             return self
 
         # Fit DFT total energy. Fitted values will not be covered.
@@ -1210,13 +1211,15 @@ class Quasi_harmonic:
 
         # Fit equation of states for K_T.
         self.eos = []; self.k_t = np.zeros(self.volume.shape)
-        v = symbols('v')
+        dV = 1e-3 * (self.combined_volume.max()-self.combined_volume.min()) / (self.combined_volume.shape[0]-1) # 0.1% of steplength
         for idx_t, i in enumerate(self.temperature):
-            eos = self.eos_fit(self.volume[:, idx_t], self.helmholtz[:, idx_t], self.eos_method, **eosinp)
-            df = diff(eos(v), v, 2)
-            lam_df = lambdify(v, df, 'numpy')
-            self.k_t[:, idx_t] = self.volume[:, idx_t] * lam_df(self.volume[:, idx_t]) / molpv
+            V0 = self.volume[:, idx_t]; F0 = self.helmholtz[:, idx_t]
+            eos = self.eos_fit(V0, F0, self.eos_method, **eosinp)
+            Feos = eos(V0)
+            self.k_t[:, idx_t] = V0 * (eos(V0+dV) - 2*Feos + eos(V0-dV)) / dV**2
             self.eos.append(eos)
+        self.k_t /= molpv
+        del dV, V0, F0, eos, Feos
 
         # Other thermodynamic functions
         self.alpha_v = (self.c_v*self.gruneisen*1e-3) / (self.k_t*self.volume*molpv)
@@ -1375,7 +1378,7 @@ class Quasi_harmonic:
         or 'min_poly_order' in kwargs.keys(): refit = True
 
         if refit == False:
-            warnings.warn('Nothing to re-fit. Return to the same object.', stacklevel=2)
+            warn('Nothing to re-fit. Return to the same object.', stacklevel=2)
             return self
 
         # Fit EOS
@@ -1427,6 +1430,7 @@ class Quasi_harmonic:
         if volume_bound is not None:
             volume_bound = np.array(volume_bound, ndmin=2).tolist()[0]
 
+        dV = 1e-3 * (self.combined_volume.max()-self.combined_volume.min()) / (self.combined_volume.shape[0]-1) # 0.1% of steplength0
         for it, eos in enumerate(self.eos):
             for ip, p in enumerate(self.pressure):
                 params = {'minimize'    : minimize,
@@ -1446,9 +1450,11 @@ class Quasi_harmonic:
                 self.helmholtz[ip, it] = eos(fit.x[0])
                 self.gibbs[ip, it] = fit.fun
 
-            v = symbols('v')
-            second = lambdify(v, diff(eos(v), v, 2), 'numpy')
-            self.k_t[:, it] = self.volume[:, it] * second(self.volume[:, it]) / molpv
+            V0 = self.volume[:, it]; Feos = eos(V0)
+            self.k_t[:, it] = V0 * (eos(V0+dV) - 2*Feos + eos(V0-dV)) / dV**2
+
+        self.k_t /= molpv
+        del V0, eos, dV, Feos
 
         # Second fit G(T; p), get entropy and C_p.
         self.gibbs_fit = []; r2tot = []
@@ -1604,18 +1610,19 @@ class Quasi_harmonic:
 
         .. note::
 
-            * With the 'thermo_eos' method, ``expansion_vol()`` must be called first.
-            * With 'thermo_freq' and 'thermo_gruneisen' methods, unless the
+            * For the 'thermo_eos' method, ``expansion_vol()`` must be called first.
+                Using ``numerical=True`` has no effect but generates a warning.
+            * For 'thermo_freq' and 'thermo_gruneisen' methods, unless the
                 ``expansion_vol()`` or ``numerical=True`` have been called, it
-                will not change the results.
-            * If ``numerical=True``, specific heat :math:`C_{p}` will be updated.
+                will not change the results. Otherwise it updates :math:`C_{p}` as well.
 
         Args:
-            numerical (bool): Use numerical differentiation for :math:`\\frac{\\partial^{2}F}{\\partial V^{2}}`.
-                It smoothens the :math:`K_{T}(T)`, :math:`K_{S}(T)` and :math:`C_{p}(T)` curves
-                when isothermal EOS fittings have poor temperature continuity.
-                Usable for all methods, but seems meaningful only to 'thermo_freq'
-                and 'thermo_gruneisen' methods.
+            numerical (bool): Use :math:`F[\\omega(V)]` instead of fitted EOS to
+                get the finite difference :math:`\\frac{\\partial^{2}F}{\\partial V^{2}}`.
+                A more costly method to smoothen the :math:`K_{T}(T)`,
+                :math:`K_{S}(T)` and :math:`C_{p}(T)` curves when EOS fittings
+                have poor temperature continuity. Usable only for 'thermo_freq'
+                and 'thermo_gruneisen'. For 'thermo_eos' it generates a warning.
             \*\*kwargs: Only functions as a container of deprecated keywords. Not used.
         Returns:
             self (Quasi_harmonic): New attributes listed below
@@ -1630,28 +1637,26 @@ class Quasi_harmonic:
         if self.method != 'thermo_freq' and self.method != 'thermo_gruneisen' and self.method != 'thermo_eos':
             raise Exception(f"Unknown method: '{self.method}'.")
 
-        if numerical == True and (self.method == 'thermo_freq' or self.method == 'thermo_gruneisen'):
-            self.k_t = np.zeros(self.volume.shape)
-            for ip, p in enumerate(self.pressure):
-                for it, t in enumerate(self.temperature):
-                    f0 = self.helmholtz[ip,it]
-                    v0 = self.volume[ip, it]
-                    ha_p1 = self.get_Harmonic(v0*1.01).thermodynamics(temperature=t,pressure=p)
-                    ha_m1 = self.get_Harmonic(v0*0.99).thermodynamics(temperature=t,pressure=p)
-                    self.k_t[ip,it] = v0 * (ha_p1.helmholtz[0] - 2*f0 + ha_m1.helmholtz[0]) / (v0*0.01)**2
-            self.k_t /= molpv
-            self.c_p = self.c_v + self.alpha_v**2 * (self.k_t*self.volume*molpv) * self.temperature * 1e3
-
-        if numerical == True and (self.method == 'thermo_eos'):
-            self.k_t = np.zeros(self.volume.shape)
-            for it, t in enumerate(self.temperature):
-                eos = self.eos[it]
+        if self.method == 'thermo_freq' or self.method == 'thermo_gruneisen':
+            if numerical == True:
+                dV = 1e-3 * (self.combined_volume.max()-self.combined_volume.min()) / (self.combined_volume.shape[0]-1)
+                self.k_t = np.zeros(self.volume.shape)
                 for ip, p in enumerate(self.pressure):
-                    f0 = self.helmholtz[ip,it]
-                    v0 = self.volume[ip, it]
-                    self.k_t[ip,it] = v0 * (eos(v0*1.01) - 2*f0 + eos(v0*0.99)) / (v0*0.01)**2
-            self.k_t /= molpv
-            self.c_p = self.c_v + self.alpha_v**2 * (self.k_t*self.volume*molpv) * self.temperature * 1e3
+                    for it, t in enumerate(self.temperature):
+                        f0 = self.helmholtz[ip,it]
+                        v0 = self.volume[ip, it]
+                        ha_p1 = self.get_Harmonic(v0+dV).thermodynamics(temperature=t,pressure=p)
+                        ha_m1 = self.get_Harmonic(v0-dV).thermodynamics(temperature=t,pressure=p)
+                        self.k_t[ip,it] = v0 * (ha_p1.helmholtz[0] - 2*f0 + ha_m1.helmholtz[0]) / dV**2
+                self.k_t /= molpv
+                self.c_p = self.c_v + self.alpha_v**2 * (self.k_t*self.volume*molpv) * self.temperature * 1e3
+                del dV, f0, v0, ha_p1, ha_m1
+
+            else:
+                pass
+        else: # method has been checked
+            if numerical == True: warn("'numerical=True' will not update 'k_t' and 'c_p' fitted with 'thermo_eos'.", stacklevel=2)
+            else: pass
 
         self.k_s = np.zeros(self.k_t.shape) + self.k_t
         if not hasattr(self, 'c_v'): self.specific_heat()
